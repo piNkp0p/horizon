@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Telegram Slot Machine – Cosmic Frame</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #020616; overflow: hidden; }
+    #game { position: fixed; inset: 0; display: grid; place-items: center; }
+    canvas { display: block; max-width: 100%; max-height: 100%; object-fit: contain; background: #000; }
+    .error-banner { position: fixed; top: 0; left: 0; right: 0; background: #3a0d10; color: #ffd2d2; padding: 10px 14px; font-weight: 700; display: none; z-index: 20; white-space: pre-wrap; }
+    body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    audio { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="errorBanner" class="error-banner"></div>
+  <audio id="spinSound" hidden preload="auto">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg" />
+  </audio>
+
+<script>
+(function(){
+  'use strict';
+  function show(msg){ var el=document.getElementById('errorBanner'); if(!el) return; el.textContent=String(msg); el.style.display='block'; }
+  window.__showBanner=show;
+  window.addEventListener('error',function(e){ if(String(e.message).indexOf('Script error')===-1) show('Error: '+e.message); });
+  window.addEventListener('unhandledrejection',function(e){ var r=e && e.reason; show('Unhandled: '+(r && (r.message||r))); });
+
+  window.addEventListener('DOMContentLoaded',function(){
+    // ----- CONFIG -----
+    var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
+      // Performance-tuned cosmic background (keeps animation but lighter)
+      cosmicBG:{ enabled:true, alpha:0.35, resolution:0.20, speed:0.22, scale:0.7, stars:90, maxFPS:12, starSpeedPx:140, starSpeedJitter:0.9 },
+      spinBaseDuration:2.2, spinStagger:0.5, cyclesBase:8, cyclesStep:2 };
+    var REEL_DIR=[-1,+1,-1];
+    var SYMBOLS=['\u2648','\u2649','\u264A','\u264B','\u264C','\u264D','\u264E','\u264F','\u2650','\u2651','\u2652','\u2653','JP'];
+    var FRAME_RADIUS=28;
+
+    // ----- UTIL -----
+    function imod(n,m){return ((n%m)+m)%m;}
+    function easeOutCubic(u){return 1-Math.pow(1-u,3);}    
+    function roundRectPath(ctx,x,y,w,h,r){var rr=Math.max(0,Math.min(r,Math.min(w,h)/2));ctx.beginPath();ctx.moveTo(x+rr,y);ctx.arcTo(x+w,y,x+w,y+h,rr);ctx.arcTo(x+w,y+h,x,y+h,rr);ctx.arcTo(x,y+h,x,y,rr);ctx.arcTo(x,y,x+w,y,rr);ctx.closePath();}
+    function hsv2rgb(h,s,v){var r,g,b;var i=Math.floor(h*6);var f=h*6-i;var p=v*(1-s);var q=v*(1-f*s);var t=v*(1-(1-f)*s);switch(i%6){case 0:r=v;g=t;b=p;break;case 1:r=q;g=v;b=p;break;case 2:r=p;g=v;b=t;break;case 3:r=p;g=q;b=v;break;case 4:r=t;g=p;b=v;break;case 5:r=v;g=p;b=t;break;}return[Math.round(r*255),Math.round(g*255),Math.round(b*255)];}
+
+    // ----- FRAME STYLE -----
+    var FRAME_STYLE={ baseTop:'#3c4252', baseBottom:'#171a24', edgeLight:'rgba(200,210,230,0.75)', edgeShadow:'rgba(0,0,0,0.45)', innerShadow:'rgba(0,0,0,0.35)', highlight:'rgba(255,255,255,0.25)' };
+    function drawNaturalFrame(ctx,x,y,w,h,r){
+      var rr=Math.max(0,Math.min(r,Math.min(w,h)/2));
+      ctx.save(); ctx.lineWidth=6; ctx.strokeStyle=FRAME_STYLE.edgeShadow; roundRectPath(ctx,x+1.5,y+1.5,w-3,h-3,rr-1.5); ctx.stroke();
+      ctx.lineWidth=3; ctx.strokeStyle=FRAME_STYLE.edgeLight;  roundRectPath(ctx,x+2.5,y+2.5,w-5,h-5,rr-2.5); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.lineWidth=10; ctx.strokeStyle=FRAME_STYLE.innerShadow; roundRectPath(ctx,x+8,y+8,w-16,h-16,rr-8); ctx.stroke();
+      ctx.lineWidth=2; ctx.strokeStyle=FRAME_STYLE.highlight;  roundRectPath(ctx,x+10,y+10,w-20,h-20,rr-10); ctx.stroke(); ctx.restore();
+    }
+
+    // ----- COSMIC BG -----
+    function CosmicBackground(W,H){ this.w=W; this.h=H; this.time=0; this.rw=Math.max(80,Math.floor(W*CONFIG.cosmicBG.resolution)); this.rh=Math.max(80,Math.floor(H*CONFIG.cosmicBG.resolution)); this.c=document.createElement('canvas'); this.c.width=this.rw; this.c.height=this.rh; this.ctx=this.c.getContext('2d'); this.imgData=this.ctx.createImageData(this.rw,this.rh); this.stars=[]; for(var i=0;i<CONFIG.cosmicBG.stars;i++){ var big=Math.random()<0.15; this.stars.push({ x:Math.random()*this.w,y:Math.random()*this.h,r: big?(1.5+Math.random()*2.5):(0.5+Math.random()*0.7), v:CONFIG.cosmicBG.starSpeedPx*(0.5+Math.random()*CONFIG.cosmicBG.starSpeedJitter), shiny:big, phase:Math.random()*Math.PI*2, burst:false, burstTimer:0 }); } this.lastRegen=0; this.frameInterval=1/CONFIG.cosmicBG.maxFPS; this._needsRegen=true; }
+    CosmicBackground.prototype.update=function(dt){ this.time+=dt*CONFIG.cosmicBG.speed; this.lastRegen+=dt; for(var i=0;i<this.stars.length;i++){ var s=this.stars[i]; s.y+=s.v*dt; if(s.y>this.h){ s.y=-2; s.x=Math.random()*this.w; } if(s.shiny){ s.phase+=dt*2; } if(Math.random()<0.0005 && !s.burst){ s.burst=true; s.burstTimer=0; } if(s.burst){ s.burstTimer+=dt; if(s.burstTimer>0.5){ s.burst=false; } } } if(this.lastRegen>=this.frameInterval){ this.lastRegen=0; this._needsRegen=true; } };
+    CosmicBackground.prototype._hash=function(x,y){return Math.abs(Math.sin(x*127.1+y*311.7)*43758.5453)%1;};
+    CosmicBackground.prototype._noise=function(x,y){var ix=Math.floor(x),iy=Math.floor(y);var fx=x-ix,fy=y-iy;var a=this._hash(ix,iy);var b=this._hash(ix+1,iy);var c=this._hash(ix,iy+1);var d=this._hash(ix+1,iy+1);var u=fx*fx*(3-2*fx);var v=fy*fy*(3-2*fy);return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v;};
+    CosmicBackground.prototype._fbm=function(x,y){var v=0,a=0.5,f=1;for(var i=0;i<3;i++){v+=a*this._noise(x*f,y*f);f*=2.02;a*=0.5;}return v;};
+    CosmicBackground.prototype._regen=function(){ var data=this.imgData.data; var t=this.time; var scale=1.6*CONFIG.cosmicBG.scale; for(var j=0;j<this.rh;j++){ for(var i=0;i<this.rw;i++){ var u=(i/this.rw-0.5), v=(j/this.rh-0.5); var n1=this._fbm((u+0.5)*5*scale+t*0.35,(v+0.7)*6*scale-t*0.25); var hue=210+30*n1; var sat=0.9; var val=0.05+0.9*n1; var rgb=hsv2rgb(hue/360,sat,val); var idx=(j*this.rw+i)*4; data[idx]=rgb[0];data[idx+1]=rgb[1];data[idx+2]=rgb[2];data[idx+3]=255; } } this.ctx.putImageData(this.imgData,0,0); this._needsRegen=false; };
+    CosmicBackground.prototype.draw=function(ctx){ if(!CONFIG.cosmicBG.enabled) return; if(this._needsRegen) this._regen(); ctx.save(); ctx.globalAlpha = CONFIG.cosmicBG.alpha || 1; ctx.drawImage(this.c,0,0,this.w,this.h); ctx.restore(); for(var i=0;i<this.stars.length;i++){ var s=this.stars[i]; var alpha= s.shiny ? (0.6+0.4*Math.sin(s.phase*3)) : 0.9; var radius=s.r; if(s.burst){ radius*=2; alpha=1; } ctx.fillStyle='rgba(255,255,255,'+alpha.toFixed(2)+')'; ctx.beginPath(); ctx.arc(s.x,s.y, radius,0,Math.PI*2); ctx.fill(); } };
+
+    // ----- LAVA -----
+    function LAVA_hash(x,y){ return Math.abs(Math.sin(x*127.1+y*311.7)*43758.5453)%1; }
+    function LAVA_noise(x,y){ var ix=Math.floor(x),iy=Math.floor(y); var fx=x-ix, fy=y-iy; var a=LAVA_hash(ix,iy), b=LAVA_hash(ix+1,iy), c=LAVA_hash(ix,iy+1), d=LAVA_hash(ix+1,iy+1); var u=fx*fx*(3-2*fx), v=fy*fy*(3-2*fy); return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v; }
+    function LAVA_fbm(x,y){ var v=0, a=0.5, f=1.0; for(var i=0;i<3;i++){ v+=a*LAVA_noise(x*f,y*f); f*=2.02; a*=0.5; } return v; }
+
+    // util: ensure a reusable offscreen canvas in cache
+    function ensureCanvas(cache, key, w, h){
+      if(!cache[key]) cache[key]={canvas:document.createElement('canvas'), ctx:null, w:0, h:0, lastT:-1, interval:1/24};
+      var obj=cache[key];
+      if(obj.w!==Math.ceil(w) || obj.h!==Math.ceil(h)){
+        obj.w=Math.max(2, Math.ceil(w)); obj.h=Math.max(2, Math.ceil(h));
+        obj.canvas.width=obj.w; obj.canvas.height=obj.h; obj.ctx=obj.canvas.getContext('2d'); obj.lastT=-1; // force refresh
+      }
+      return obj;
+    }
+
+    // rectangular lava panel (cached, lower res, time-throttled)
+    function getLavaPanelCanvas(cache, w,h,time){
+      // draw at ~30% of target size to save work, scale up when blitting
+      var rw=Math.max(96, Math.floor(w*0.30)), rh=Math.max(96, Math.floor(h*0.30));
+      var obj=ensureCanvas(cache, 'panel', rw, rh);
+      if(obj.lastT>=0 && time-obj.lastT < obj.interval) return obj.canvas;
+      var octx=obj.ctx; var id=octx.createImageData(rw,rh); var d=id.data; var t=time*1.0; // slightly slower flow
+      for(var j=0;j<rh;j++){
+        for(var i=0;i<rw;i++){
+          var u=i/rw, v=j/rh;
+          var n=LAVA_fbm(u*5.0 + t*1.0, v*5.4 - t*0.9);
+          var heat=Math.max(0, Math.min(1, n*1.45));
+          var rC=(70 + 165*heat + 20*heat*heat)|0;
+          var gC=(18 + 105*heat)|0;
+          var bC=(6 + 22*heat)|0;
+          var off=(j*rw+i)<<2; d[off]=rC; d[off+1]=gC; d[off+2]=bC; d[off+3]=255;
+        }
+      }
+      octx.putImageData(id,0,0); obj.lastT=time; return obj.canvas;
+    }
+
+    // circular lava (cached) for the spin button fill
+    function drawLavaFillCached(ctx,cx,cy,r,time,cache){
+      var rw=Math.max(48, Math.floor(r*0.9)), rh=rw;
+      var obj=ensureCanvas(cache, 'circle', rw, rh);
+      if(!(obj.lastT>=0 && time-obj.lastT < obj.interval)){
+        var octx=obj.ctx; var id=octx.createImageData(rw,rh); var d=id.data; var t=time*1.2;
+        for(var j=0;j<rh;j++){
+          for(var i=0;i<rw;i++){
+            var x=(i/rw-0.5)*2, y=(j/rh-0.5)*2; var rr=x*x+y*y; var off=(j*rw+i)<<2;
+            if(rr>1){ d[off+3]=0; continue; }
+            var n=LAVA_fbm(x*3.2+ t*1.2, y*3.2- t*1.0);
+            var heat=Math.max(0, Math.min(1, n*1.5));
+            var rC=(80 + 160*heat + 15*heat*heat)|0;
+            var gC=(20 + 100*heat)|0;
+            var bC=(5 + 15*heat)|0;
+            var shade=1.0 - 0.4*rr;
+            d[off]=rC*shade; d[off+1]=gC*shade; d[off+2]=bC*shade; d[off+3]=255;
+          }
+        }
+        octx.putImageData(id,0,0); obj.lastT=time;
+      }
+      ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.clip(); ctx.imageSmoothingEnabled=false; ctx.drawImage(obj.canvas, cx-r, cy-r, 2*r, 2*r); ctx.restore();
+    }
+
+    // lava bezel: outer rounded-rect minus inner window (cached & throttled)
+    function drawLavaFrameCached(ctx,x,y,w,h,r,time,thickness,cache){
+      var t = Math.max(8, thickness||20);
+      var ox=x-t, oy=y-t, ow=w+2*t, oh=h+2*t, or=r+t;
+      var obj=ensureCanvas(cache, 'ring', ow, oh);
+      if(!(obj.lastT>=0 && time-obj.lastT < obj.interval)){
+        var pCanvas=getLavaPanelCanvas(cache, ow, oh, time);
+        var octx=obj.ctx; octx.clearRect(0,0,ow,oh);
+        // paint the panel scaled to ring size
+        octx.imageSmoothingEnabled=false; octx.drawImage(pCanvas, 0,0, ow,oh);
+        // punch inner hole
+        octx.save(); octx.beginPath(); roundRectPath(octx, (x-ox), (y-oy), w, h, r); octx.globalCompositeOperation='destination-out'; octx.fillStyle='#000'; octx.fill(); octx.restore();
+        // clip to outer shape for crisp corners
+        octx.save(); octx.globalCompositeOperation='destination-in'; octx.beginPath(); roundRectPath(octx, 0, 0, ow, oh, or); octx.fillStyle='#000'; octx.fill(); octx.restore();
+        obj.lastT=time;
+      }
+      ctx.imageSmoothingEnabled=false; ctx.drawImage(obj.canvas, ox, oy, ow, oh); ctx.imageSmoothingEnabled=true;
+    }
+
+    // Back-compat wrapper for tests
+    var __lavaTestCache={};
+    function drawLavaFrame(ctx,x,y,w,h,r,time,thickness){
+      return drawLavaFrameCached(ctx,x,y,w,h,r,time,thickness,__lavaTestCache);
+    }
+
+    // ----- COSMIC SPIN TEXT -----
+    function drawCosmicText(ctx, text, x, y, time){
+      var w = ctx.measureText(text).width;
+      var g = ctx.createLinearGradient(x-w/2, y-20, x+w/2, y+20);
+      // animated hue shift
+      var h0 = (time*20)%360, h1=(h0+120)%360, h2=(h0+240)%360;
+      function hsl(h,s,l){ return 'hsl('+h+','+s+'%,'+l+'%)'; }
+      g.addColorStop(0,   hsl(h0,  90, 70));
+      g.addColorStop(0.5, hsl(h1,  90, 75));
+      g.addColorStop(1,   hsl(h2,  90, 70));
+      ctx.save();
+      ctx.fillStyle = g;
+      ctx.shadowColor='rgba(200,220,255,0.8)';
+      ctx.shadowBlur=8; // lower blur for perf
+      ctx.fillText(text, x, y);
+      // starry sparkle overlay (reduced count for perf)
+      ctx.shadowBlur=0; ctx.globalCompositeOperation='lighter';
+      for(var i=0;i<3;i++){
+        var sx = x - w/2 + Math.random()*w;
+        var sy = y - 12 + Math.random()*24;
+        var a = 0.6+0.4*Math.sin(time*5+i);
+        ctx.fillStyle = 'rgba(255,255,255,'+a.toFixed(2)+')';
+        ctx.fillRect(sx, sy, 1.5, 1.5);
+      }
+      ctx.restore();
+    }
+
+    // ----- ENGINE -----
+    function SlotEngine(root){
+      this.canvas=document.createElement('canvas'); this.ctx=this.canvas.getContext('2d'); root.appendChild(this.canvas);
+      this.W=CONFIG.width; this.H=CONFIG.height;
+      this.balance=CONFIG.startBalance; this.bet=CONFIG.bet;
+      this.machineCenter={ x:this.W/2, y:this.H*0.43 };
+      this.bg=new CosmicBackground(this.W,this.H);
+      // lava caches for perf
+      this._lavaFrameCache={};
+      this._lavaBtnCache={};
+      this.reels=[];
+      for(var i=0;i<CONFIG.reelCount;i++){
+        this.reels.push({ finalSymbols:Array.from({length:CONFIG.rows},function(){return SYMBOLS[(Math.random()*SYMBOLS.length)|0];}),
+          spinning:false, dir:REEL_DIR[i]||1, time:0, duration:CONFIG.spinBaseDuration+i*CONFIG.spinStagger, totalDistPx:0, progressPx:0 });
+      }
+      this.spinBtn={ x:this.W/2-120, y:this.H*0.82-60, w:240, h:120, press:false }; // visual fallback; true hit uses circle
+      this.spinSound=document.getElementById('spinSound');
+      this._resize();
+      var self=this; window.addEventListener('resize',function(){ self._resize(); });
+      this.canvas.addEventListener('pointerdown',function(e){ self._handlePointer(e,true); });
+      window.addEventListener('pointerup',function(){ self.spinBtn.press=false; });
+      this.last=performance.now(); this.time=0; this.spinFlare=0;
+      var that=this; requestAnimationFrame(function(t){ that._loop(t); });
+    }
+
+    SlotEngine.prototype._resize=function(){
+      // Cap DPR for perf on mobile; higher DPR explodes fill cost
+      var dpr=Math.min(1.25, Math.max(1,window.devicePixelRatio||1));
+      var vv=window.visualViewport; var vw=(vv?vv.width:window.innerWidth); var vh=(vv?vv.height:window.innerHeight);
+      var scale=Math.min(vw/this.W, vh/this.H);
+      this.canvas.width=this.W*dpr; this.canvas.height=this.H*dpr;
+      this.canvas.style.width=Math.floor(this.W*scale)+'px';
+      this.canvas.style.height=Math.floor(this.H*scale)+'px';
+      this.canvas.style.maxWidth='100vw';
+      this.canvas.style.maxHeight='100svh'; // helps iOS/Telegram toolbars
+      this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    };
+
+    SlotEngine.prototype._computeLayout=function(){
+      var cell=CONFIG.symbolSize, rows=CONFIG.rows, reelsN=CONFIG.reelCount;
+      var totalW=reelsN*cell+(reelsN-1)*CONFIG.reelSpacing;
+      var safeTop=16, safeBottom=16;
+      var mcY=this.machineCenter.y; // local, we may shift it to keep everything visible
+
+      // initial using local mcY
+      var startX=this.machineCenter.x-totalW/2+cell/2;
+      var topY=mcY-rows*cell/2;
+      var frameBottom=topY+rows*cell;
+
+      // Button size & placement
+      var radius=Math.min(totalW*0.18, 160);
+      var betGap=34;
+      var cx=this.machineCenter.x;
+      var cy=frameBottom + radius*0.5;
+
+      // If bottom overflows, first try shrinking button, then shift frame up
+      var bottomExtent = cy + radius + betGap;
+      if(bottomExtent > this.H - safeBottom){
+        var room = (this.H - safeBottom) - (frameBottom + betGap);
+        var maxR = Math.max(40, room/1.5); // because bottomExtent = frameBottom + 1.5*radius + betGap
+        if(maxR < radius){ radius = maxR; }
+        cy = frameBottom + radius*0.5;
+        bottomExtent = cy + radius + betGap;
+        if(bottomExtent > this.H - safeBottom){
+          var need = bottomExtent - (this.H - safeBottom);
+          mcY -= need; // shift up
+          topY = mcY - rows*cell/2;
+          frameBottom = topY + rows*cell;
+          cy = frameBottom + radius*0.5;
+          bottomExtent = cy + radius + betGap;
+        }
+      }
+
+      // If top overflows, shift down but keep bottom safe
+      if(topY < safeTop){
+        var needDown = safeTop - topY;
+        mcY += needDown;
+        topY = mcY - rows*cell/2;
+        frameBottom = topY + rows*cell;
+        cy = frameBottom + radius*0.5;
+        bottomExtent = cy + radius + betGap;
+        if(bottomExtent > this.H - safeBottom){
+          // final fallback: reduce radius further
+          var room2 = (this.H - safeBottom) - (frameBottom + betGap);
+          radius = Math.max(36, Math.min(radius, room2/1.5));
+          cy = frameBottom + radius*0.5;
+        }
+      }
+
+      var x=cx-radius, y=cy-radius, w=radius*2, h=radius*2;
+      return {cell:cell, rows:rows, reelsN:reelsN, totalW:totalW, startX:startX, topY:topY, frameBottom:frameBottom, cx:cx, cy:cy, radius:radius, x:x, y:y, w:w, h:h, betGap:betGap};
+    };
+
+    SlotEngine.prototype._handlePointer=function(e,down){
+      var rect=this.canvas.getBoundingClientRect();
+      var x=(e.clientX-rect.left)/(rect.width)*this.W; var y=(e.clientY-rect.top)/(rect.height)*this.H;
+      var L=this._computeLayout();
+      var dx=x-L.cx, dy=y-L.cy; var inside=(dx*dx+dy*dy)<=(L.radius*L.radius);
+      if(inside){ this.spinBtn.press=down; if(down) this._spin(); }
+    };
+
+    SlotEngine.prototype._spin=function(){
+      if(this.reels.some(function(r){return r.spinning;})) return;
+      if(this.balance>=this.bet) this.balance-=this.bet; this.spinFlare=1;
+      if(this.spinSound){ this.spinSound.currentTime=0; this.spinSound.play().catch(function(){}); }
+      for(var i=0;i<this.reels.length;i++){
+        var r=this.reels[i], arr=new Array(CONFIG.rows);
+        for(var k=0;k<CONFIG.rows;k++){ arr[k]=SYMBOLS[(Math.random()*SYMBOLS.length)|0]; }
+        arr[1]='JP';
+        r.finalSymbols=arr; r.spinning=true; r.time=0;
+        r.duration=CONFIG.spinBaseDuration+i*CONFIG.spinStagger;
+        var cycles=CONFIG.cyclesBase+i*CONFIG.cyclesStep;
+        r.totalDistPx=cycles*CONFIG.rows*CONFIG.symbolSize; r.progressPx=0;
+      }
+    };
+
+    SlotEngine.prototype._updateReels=function(dt){
+      for(var i=0;i<this.reels.length;i++){
+        var r=this.reels[i]; if(!r.spinning) continue;
+        r.time+=dt; var u=Math.min(1,r.time/r.duration); var eased=easeOutCubic(u);
+        r.progressPx=r.totalDistPx*eased; if(u>=1){ r.progressPx=r.totalDistPx; r.spinning=false; }
+      }
+      var anySpinning=this.reels.some(function(r){return r.spinning;});
+      var target= anySpinning?1:0;
+      this.spinFlare += (target - this.spinFlare) * Math.min(1, dt*4.0);
+      this.spinFlare=Math.max(0,Math.min(1,this.spinFlare));
+      this.bg.update(dt);
+    };
+
+    SlotEngine.prototype._loop=function(t){ var dt=(t-this.last)/1000; this.last=t; this.time+=dt; this._updateReels(dt); this._draw(); var self=this; requestAnimationFrame(function(tt){ self._loop(tt); }); };
+
+    SlotEngine.prototype._draw=function(){
+      var ctx=this.ctx; ctx.clearRect(0,0,this.W,this.H); this.bg.draw(ctx);
+      var L=this._computeLayout();
+      var cell=L.cell, rows=L.rows, reelsN=L.reelsN, totalW=L.totalW, startX=L.startX, topY=L.topY;
+
+      // Reels viewport
+      ctx.save(); roundRectPath(ctx, startX-cell/2, topY, totalW, rows*cell, FRAME_RADIUS); ctx.clip();
+      ctx.font=Math.floor(cell*0.56)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      for(var ri=0;ri<reelsN;ri++){
+        var rx=startX+ri*(cell+CONFIG.reelSpacing); var reel=this.reels[ri];
+        var distPx=reel.progressPx; var whole=Math.floor(distPx/cell); var frac=distPx-whole*cell; var shift=reel.dir*whole; var fracPx=reel.dir*frac;
+        for(var k=-1;k<rows+1;k++){
+          var visIndex=imod(k-shift,rows); var sym=reel.finalSymbols[visIndex]; var y=topY+k*cell+fracPx;
+          ctx.fillStyle=(sym==='JP')? '#fff200':'#ffffff'; ctx.fillText(sym,rx,y+cell/2);
+        }
+      }
+      ctx.restore();
+
+      // Lava bezel (animated) first
+      drawLavaFrameCached(ctx, startX-cell/2, topY, totalW, rows*cell, FRAME_RADIUS, this.time, 22, this._lavaFrameCache);
+      // Bevel overlays
+      drawNaturalFrame(ctx, startX-cell/2, topY, totalW, rows*cell, FRAME_RADIUS);
+
+      // Big circular spin button
+      var cx=L.cx, cy=L.cy, radius=L.radius;
+      // metal ring
+      var g=ctx.createLinearGradient(cx,cy-radius,cx,cy+radius); g.addColorStop(0,FRAME_STYLE.baseTop); g.addColorStop(1,FRAME_STYLE.baseBottom);
+      ctx.beginPath(); ctx.arc(cx,cy,radius,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+      ctx.lineWidth=5; ctx.strokeStyle=FRAME_STYLE.edgeShadow; ctx.beginPath(); ctx.arc(cx,cy,radius-2.5,0,Math.PI*2); ctx.stroke();
+      ctx.lineWidth=2; ctx.strokeStyle=FRAME_STYLE.edgeLight;  ctx.beginPath(); ctx.arc(cx,cy,radius-6,0,Math.PI*2); ctx.stroke();
+
+      // Lava
+      drawLavaFillCached(ctx, cx, cy, radius-16, this.time, this._lavaBtnCache);
+
+      // Reactive glows
+      var pulse = 0.25 + 0.25*Math.sin(this.time*3.2), flare=this.spinFlare;
+      var outer=ctx.createRadialGradient(cx,cy, radius*0.6, cx,cy, radius*1.2);
+      outer.addColorStop(0,'rgba(255,160,60,0)'); outer.addColorStop(1,'rgba(255,100,30,'+(0.25*pulse+0.65*flare).toFixed(3)+')');
+      ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.beginPath(); ctx.arc(cx,cy,radius*1.18,0,Math.PI*2); ctx.fillStyle=outer; ctx.fill(); ctx.restore();
+      var corona=ctx.createRadialGradient(cx,cy, radius*0.2, cx,cy, radius*0.92);
+      corona.addColorStop(0,'rgba(255,240,210,'+(0.65*flare).toFixed(3)+')');
+      corona.addColorStop(1,'rgba(255,120,40,0)');
+      ctx.save(); ctx.globalCompositeOperation='screen'; ctx.beginPath(); ctx.arc(cx,cy,radius*0.92,0,Math.PI*2); ctx.fillStyle=corona; ctx.fill(); ctx.restore();
+
+      // Press overlay
+      if(this.spinBtn.press){ ctx.beginPath(); ctx.arc(cx,cy,radius-6,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fill(); }
+
+      // Cosmic SPIN text
+      ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='bold 36px sans-serif';
+      drawCosmicText(ctx, 'SPIN', cx, cy, this.time);
+
+      // HUD
+      ctx.fillStyle='#d6e4ff'; ctx.font='24px sans-serif'; ctx.textAlign='right'; ctx.fillText('BALANCE: '+this.balance, this.W-20, 30);
+
+      // BET text BELOW the button
+      ctx.textAlign='center'; ctx.font='bold 22px sans-serif'; ctx.fillStyle='rgba(230,235,245,0.9)';
+      var betY = Math.min(cy + radius + L.betGap, this.H - 8);
+      ctx.fillText('BET: '+this.bet, cx, betY);
+    };
+
+    // ----- TESTS -----
+    function assert(cond,msg){ if(!cond){ throw new Error('[TEST FAIL] '+msg); } }
+    function approx(a,b,eps){ return Math.abs(a-b) <= (eps||1e-6); }
+    function selfTest(s){ try{
+      // basic
+      assert(!!s.canvas&&!!s.ctx,'canvas initialized');
+      assert(s.reels.length===CONFIG.reelCount,'reel count');
+      assert(s.reels.every(function(r){return r.finalSymbols.length===CONFIG.rows;}),'rows per reel');
+      assert(typeof s.bg.update==='function'&&typeof s.bg.draw==='function','background methods available');
+
+      // draw shouldn't throw
+      try{ s._draw(); }catch(e){ throw new Error('[TEST FAIL] draw() throws'); }
+
+      // spin start/stop
+      var before=s.balance; s._spin();
+      assert(s.reels.every(function(r){return r.spinning===true;}),'spin starts');
+      s._updateReels(999);
+      assert(s.reels.every(function(r){return !r.spinning;}),'spin ends');
+      s.balance=before;
+
+      // bg sanity
+      assert(Array.isArray(s.bg.stars)&&s.bg.stars.length===CONFIG.cosmicBG.stars,'stars seeded');
+      var y0=s.bg.stars[0].y; s.bg.update(0.016); assert(s.bg.stars[0].y!==y0,'star moves on update');
+
+      // layout keeps content on-screen
+      var L=s._computeLayout();
+      assert(L.cy+L.radius+L.betGap <= s.H - 4, 'button+BET fits within canvas height');
+      assert(L.topY === undefined || L.topY >= 0, 'top stays on screen (best effort)');
+      assert(L.cx-L.radius>=0 && L.cx+L.radius<=s.W, 'button fits within width');
+      // lava frame helper exists and draws
+      try{ drawLavaFrame(s.ctx, 40, 40, 240, 120, 18, 0.7, 22); }catch(e){ throw new Error('[TEST FAIL] drawLavaFrame throws'); }
+
+      // EXTRA: cached lava functions should throttle updates
+      var cacheTest={};
+      var panel1=getLavaPanelCanvas(cacheTest, 200, 100, 0.0);
+      var panel2=getLavaPanelCanvas(cacheTest, 200, 100, 0.01);
+      assert(panel1===panel2, 'lava panel throttles within interval');
+    }catch(e){ if(window.__showBanner) window.__showBanner(e.message||e); } }
+
+    try{ var root=document.getElementById('game'); window.$slot=new SlotEngine(root); selfTest(window.$slot); }
+    catch(e){ var el=document.getElementById('errorBanner'); el.textContent='Bootstrap failed: '+(e.message||e); el.style.display='block'; }
+  });
+})();
+</script>
+</body>
+</html>
