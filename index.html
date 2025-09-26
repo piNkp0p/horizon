@@ -16,6 +16,11 @@
 <body>
   <div id="game"></div>
   <div id="errorBanner" class="error-banner"></div>
+  <!-- Fallback message for iOS Quick Look (no JS execution) -->
+  <div id="fallback" class="error-banner" style="display:block;background:#0e1422;color:#cde7ff">
+    If you see only this message on iPhone, the file is opening in the Files app preview which doesn’t run JavaScript.
+    Tap the share icon → <b>Open in Safari</b>, or host this file on HTTPS (GitHub Pages / Netlify) and open that link.
+  </div>
   <audio id="spinSound" hidden preload="auto">
     <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg" />
   </audio>
@@ -29,6 +34,7 @@
   window.addEventListener('unhandledrejection',function(e){ var r=e && e.reason; show('Unhandled: '+(r && (r.message||r))); });
 
   window.addEventListener('DOMContentLoaded',function(){
+    var fb=document.getElementById('fallback'); if(fb) fb.style.display='none';
     // ----- CONFIG -----
     var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
       // Performance-tuned cosmic background (keeps animation but lighter)
