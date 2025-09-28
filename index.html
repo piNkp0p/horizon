@@ -15,6 +15,8 @@
 </head>
 <body>
   <div id="game"></div>
+  <!-- hidden input used to edit bet on mobile/desktop -->
+  <input id="betInput" type="number" inputmode="numeric" min="1" step="1" style="position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;border:0;padding:0;background:transparent;color:transparent" aria-label="Edit bet" />
   <div id="errorBanner" class="error-banner"></div>
   <div id="fallback" class="error-banner" style="display:block;background:#0e1422;color:#cde7ff">
     If you see only this message on iPhone, the file is opening in the Files app preview which doesn’t run JavaScript.
@@ -28,6 +30,7 @@
 (function(){
   'use strict';
 
+  // --- Error banner helpers ---
   function show(msg){ var el=document.getElementById('errorBanner'); if(!el) return; el.textContent=String(msg); el.style.display='block'; }
   window.__showBanner=show;
   window.addEventListener('error',function(e){ if(String(e.message).indexOf('Script error')===-1) show('Error: '+e.message); });
@@ -41,6 +44,9 @@
       spinBaseDuration:2.0, spinStagger:0.45, cyclesBase:6, cyclesStep:2 };
     var REEL_DIR=[-1,+1,-1];
     var FRAME_RADIUS=28;
+    // Scale-with-layout factors (relative, not absolute pixels)
+    var FRAME_GAP_FRAC=0.12;      // gap around reels viewport = ~12% of cell size
+    var BUTTON_OFFSET_FRAC=0.22;  // button offset downward from frame bottom = ~22% of cell size
 
     // visual sizing
     var SYMBOL_FILL   = 1.00; // full inner square
@@ -137,7 +143,7 @@
       ctx.restore();
     }
 
-    // background (bigger stars than last version)
+    // background
     function StarBG(W,H){
       this.w=W; this.h=H; this.t=0; this.stars=[];
       for(var i=0;i<160;i++){
@@ -146,7 +152,7 @@
         this.stars.push({
           x:Math.random()*W,
           y:Math.random()*H,
-          r:0.8+Math.random()*1.4, // larger stars than before
+          r:0.8+Math.random()*1.4,
           v:20+Math.random()*60,
           rgb: rgb,
           baseA: 0.6 + Math.random()*0.35,
@@ -239,13 +245,20 @@
 
     // ----- ENGINE -----
     function SlotEngine(root){
-      this.canvas=document.createElement('canvas'); this.ctx=this.canvas.getContext('2d'); root.appendChild(this.canvas);
+      // canvas
+      this.canvas=document.createElement('canvas');
+      this.ctx=this.canvas.getContext('2d');
+      root.appendChild(this.canvas);
+
+      // state
       this.W=CONFIG.width; this.H=CONFIG.height;
-      this.balance=CONFIG.startBalance; this.bet=CONFIG.bet;
+      this.balance=CONFIG.startBalance; this.bet=Math.max(1, Math.floor(CONFIG.bet||1));
       this.machineCenter={ x:this.W/2, y:this.H*0.43 };
       this.bg=new StarBG(this.W,this.H);
       this.reels=[];
       this.buttonPressed=false;
+      this.betRect=null; // last drawn bet hit-area
+
       for(var i=0;i<CONFIG.reelCount;i++){
         this.reels.push({
           finalSymbols:Array.from({length:CONFIG.rows},function(){return SYMBOLS[(Math.random()*SYMBOLS.length)|0];}),
@@ -254,15 +267,25 @@
           totalDistPx:0, progressPx:0
         });
       }
+
+      // layout
       this._resize();
       var self=this; window.addEventListener('resize',function(){ self._resize(); });
       this.last=performance.now(); this.time=0; var that=this; requestAnimationFrame(function(t){ that._loop(t); });
 
-      // Button press feedback on canvas
+      // --- edit bet via hidden input ---
+      var betInput=document.getElementById('betInput');
+      function commitBet(){ var v=parseInt(betInput.value,10); if(!isFinite(v)||v<1) return; self.setBet(v); self._draw(); }
+      betInput.addEventListener('change',commitBet);
+      betInput.addEventListener('blur',commitBet);
+
+      // --- interactions: button + bet ---
       var pressActive=false;
       function withinButton(ev){ var L=self._computeLayout(); var r=L.radius; var rect=self.canvas.getBoundingClientRect(); var x=(ev.clientX-rect.left)/rect.width*self.W; var y=(ev.clientY-rect.top)/rect.height*self.H; var dx=x-L.cx, dy=y-L.cy; return dx*dx+dy*dy<=r*r; }
+      function withinBet(ev){ if(!self.betRect) return false; var rect=self.canvas.getBoundingClientRect(); var x=(ev.clientX-rect.left)/rect.width*self.W; var y=(ev.clientY-rect.top)/rect.height*self.H; var b=self.betRect; return x>=b.x && x<=b.x+b.w && y>=b.y && y<=b.y+b.h; }
+
       this.canvas.addEventListener('pointerdown',function(e){ if(withinButton(e)){ pressActive=true; self.buttonPressed=true; self._draw(); }});
-      this.canvas.addEventListener('pointerup',function(e){ var was=pressActive; pressActive=false; self.buttonPressed=false; self._draw(); if(was && withinButton(e)){ self._spin(); }});
+      this.canvas.addEventListener('pointerup',function(e){ var was=pressActive; pressActive=false; self.buttonPressed=false; self._draw(); if(was && withinButton(e)){ self._spin(); return; } if(withinBet(e)){ betInput.value=String(self.bet); var r=self.canvas.getBoundingClientRect(); var b=self.betRect; betInput.style.left=(r.left + (b.x+b.w/2)*r.width/self.W - 20)+'px'; betInput.style.top=(r.top + (b.y+b.h/2)*r.height/self.H - 20)+'px'; betInput.focus(); betInput.select(); setTimeout(function(){ betInput.style.left='-9999px'; betInput.style.top='-9999px'; }, 300); }});
       this.canvas.addEventListener('pointercancel',function(){ pressActive=false; self.buttonPressed=false; self._draw(); });
       this.canvas.addEventListener('pointerleave',function(){ if(pressActive){ self.buttonPressed=false; self._draw(); }});
     }
@@ -285,17 +308,18 @@
       var topY=this.machineCenter.y-rows*cell/2;
       var frameBottom=topY+rows*cell;
       var radius=Math.min(totalW*0.18, 160);
-      var cx=this.machineCenter.x; var cy=frameBottom + radius*0.70; // keep inside viewport
+      var buttonOffset = Math.round(cell * BUTTON_OFFSET_FRAC);
+      var cx=this.machineCenter.x; var cy=frameBottom + radius*0.70 + buttonOffset;
       var betGap=34;
       var bottomExtent=cy+radius+betGap; var safeBottom=16; var safeTop=16;
       if(bottomExtent>this.H-safeBottom){
         var room=(this.H-safeBottom)-(frameBottom+betGap);
         var maxR=Math.max(48,room/1.6);
         radius=Math.min(radius,maxR);
-        cy=frameBottom+radius*0.70;
+        cy=frameBottom+radius*0.70 + buttonOffset;
       }
-      if(topY<safeTop){ var needDown=safeTop-topY; topY+=needDown; frameBottom=topY+rows*cell; cy=frameBottom+radius*0.70; }
-      return {cell:cell, rows:rows, reelsN:reelsN, totalW:totalW, startX:startX, topY:topY, frameBottom:frameBottom, cx:cx, cy:cy, radius:radius, betGap:betGap};
+      if(topY<safeTop){ var needDown=safeTop-topY; topY+=needDown; frameBottom=topY+rows*cell; cy=frameBottom+radius*0.70 + buttonOffset; }
+      return {cell:cell, rows:rows, reelsN:reelsN, totalW:totalW, startX:startX, topY:topY, frameBottom:frameBottom, cx:cx, cy:cy, radius:radius, betGap:betGap, buttonOffset:buttonOffset};
     };
 
     function easeOutCubic(u){return 1-Math.pow(1-u,3);}    
@@ -303,7 +327,7 @@
 
     SlotEngine.prototype._spin=function(){
       if(this.reels.some(function(r){return r.spinning;})) return;
-      var sfx=document.getElementById('spinSound'); try{ sfx&&sfx.play&&sfx.play(); }catch(_){}
+      var sfx=document.getElementById('spinSound'); try{ sfx&&sfx.play&&sfx.play(); }catch(_){ }
       for(var i=0;i<this.reels.length;i++){
         var r=this.reels[i], arr=new Array(CONFIG.rows);
         for(var k=0;k<CONFIG.rows;k++){ arr[k]=SYMBOLS[(Math.random()*SYMBOLS.length)|0]; }
@@ -311,6 +335,8 @@
         var cycles=CONFIG.cyclesBase+i*CONFIG.cyclesStep; r.totalDistPx=cycles*CONFIG.rows*CONFIG.symbolSize; r.progressPx=0;
       }
     };
+
+    SlotEngine.prototype.setBet=function(v){ this.bet=Math.max(1, Math.floor(v)); };
 
     SlotEngine.prototype._updateReels=function(dt){
       for(var i=0;i<this.reels.length;i++){
@@ -342,27 +368,59 @@
       }
       ctx.restore();
 
-      // divider lines between reels (match frame gradient)
+      // divider lines between reels
       for(var ri=1;ri<reelsN;ri++){
         var lineX=startX - cell/2 + ri*(cell+CONFIG.reelSpacing) - CONFIG.reelSpacing/2;
         drawDividerLine(ctx, lineX, topY, rows, cell, this.time);
       }
 
-      // lava frame
-      drawLavaFrame(ctx, startX-cell/2, topY, totalW, rows*cell, FRAME_RADIUS, this.time);
+      // lava frame with scale-based gap
+      var gapPx = Math.max(1, Math.round(cell * FRAME_GAP_FRAC));
+      var fx=startX - cell/2 - gapPx;
+      var fy=topY - gapPx;
+      var fw=totalW + gapPx*2;
+      var fh=rows*cell + gapPx*2;
+      drawLavaFrame(ctx, fx, fy, fw, fh, FRAME_RADIUS, this.time);
 
       // lava spin button (with press feedback)
       var cx=L.cx, cy=L.cy, radius=L.radius; drawLavaButton(ctx, cx, cy, radius, this.time, this.buttonPressed);
 
-      // HUD
-      ctx.fillStyle='#d6e4ff'; ctx.font='24px sans-serif'; ctx.textAlign='right'; ctx.fillText('BALANCE: '+this.balance, this.W-20, 30);
-      ctx.textAlign='center'; ctx.font='bold 22px sans-serif'; ctx.fillStyle='rgba(230,235,245,0.9)'; var betY=Math.min(cy+radius+L.betGap, this.H-8); ctx.fillText('BET: '+this.bet, cx, betY);
+      // HUD (money with theme-matched styling and tappable bet)
+      // Balance (top-right) — scaled font size for different screens
+      ctx.save();
+      var balFontPx=Math.max(22, Math.round(cell*0.22));
+      var moneyGrad=ctx.createLinearGradient(this.W-200,0,this.W,60);
+      moneyGrad.addColorStop(0,'#ffd066'); moneyGrad.addColorStop(1,'#ff5a0a');
+      ctx.fillStyle=moneyGrad; ctx.font='900 '+balFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='right'; ctx.textBaseline='top';
+      ctx.shadowBlur=10; ctx.shadowColor='rgba(255,120,30,0.65)';
+      ctx.fillText('$'+this.balance, this.W-20, 16);
+      ctx.restore();
+
+      // Bet (bottom-center) — show as $<amount>, tappable to edit
+      ctx.save();
+      var betY=Math.min(cy+radius+L.betGap, this.H-8);
+      var betFontPx=Math.max(20, Math.round(cell*0.20));
+      var betGrad=ctx.createLinearGradient(L.cx-60,betY-20,L.cx+60,betY+20);
+      betGrad.addColorStop(0,'#ffb34a'); betGrad.addColorStop(1,'#ffd066');
+      ctx.fillStyle=betGrad; ctx.font='900 '+betFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      var betText='$'+this.bet;
+      ctx.shadowBlur=12; ctx.shadowColor='rgba(255,120,30,0.65)';
+      ctx.fillText(betText, L.cx, betY);
+
+      // compute a generous hit target for editing
+      var m=ctx.measureText(betText); var bw=Math.max(100, m.width*1.6); var bh=Math.max(36, Math.round(betFontPx*1.4));
+      this.betRect={ x:L.cx-bw/2, y:betY-bh/2, w:bw, h:bh };
+      // subtle outline to hint interactivity (no hard stroke)
+      ctx.globalAlpha=0.18; ctx.fillStyle='#ff5a0a'; roundRectPath(ctx, this.betRect.x, this.betRect.y, this.betRect.w, this.betRect.h, 10); ctx.fill();
+      ctx.restore();
     };
 
     // ----- TESTS -----
     function assert(c,m){ if(!c){ throw new Error('[TEST FAIL] '+m); } }
+    function nearly(a,b,eps){ return Math.abs(a-b) <= (eps||1e-6); }
     function selfTest(s){
       try{
+        // Core tests:
         assert(typeof SlotEngine==='function','SlotEngine defined');
         assert(!!s.canvas&&!!s.ctx,'canvas initialized');
         assert(s.reels.length===CONFIG.reelCount,'reel count');
@@ -372,6 +430,25 @@
         try{ drawSymbol(s.ctx,'JP',120,120,160); }catch(e){ throw new Error('[TEST FAIL] drawSymbol JP throws'); }
         assert(typeof SYMBOL_FILL==='number' && SYMBOL_FILL>0 && SYMBOL_FILL<=1, 'SYMBOL_FILL sane');
         assert(typeof SYMBOL_MARGIN==='number' && SYMBOL_MARGIN>=0 && SYMBOL_MARGIN<0.5, 'SYMBOL_MARGIN sane');
+
+        // Additional tests (scale-based logic + HUD):
+        var cell=L.cell, rows=L.rows, totalW=L.totalW, startX=L.startX, topY=L.topY;
+        var vx=startX - cell/2, vy=topY, vw=totalW, vh=rows*cell;
+        var expectedGap=Math.max(1, Math.round(cell*FRAME_GAP_FRAC));
+        var fx=vx - expectedGap, fy=vy - expectedGap, fw=vw + expectedGap*2, fh=vh + expectedGap*2;
+        assert(expectedGap>=1, 'computed gap >= 1px');
+        assert(fx < vx && fy < vy && (fx+fw) > (vx+vw) && (fy+fh) > (vy+vh), 'frame surrounds viewport with gap');
+        var lineX = startX - cell/2 + 1*(cell+CONFIG.reelSpacing) - CONFIG.reelSpacing/2; // middle divider for 3 reels
+        assert(lineX>vx && lineX<vx+vw, 'divider line within viewport bounds');
+        assert(easeOutCubic(0)===0 && nearly(easeOutCubic(1),1), 'easeOutCubic endpoints');
+        // Spin then fast-forward to ensure reels stop
+        s._spin(); s._updateReels(999);
+        assert(s.reels.every(function(r){ return !r.spinning; }), 'reels stop after big dt');
+        // Button offset applies and scales with cell
+        var baselineCy = (L.frameBottom) + (L.radius*0.70);
+        assert(L.cy >= baselineCy + Math.round(cell*BUTTON_OFFSET_FRAC) - 1, 'button offset (scaled) applied');
+        // Bet hitbox computed
+        s._draw(); assert(s.betRect && s.betRect.w>0 && s.betRect.h>0, 'betRect computed');
       } catch(e){ if(window.__showBanner) window.__showBanner(e.message||e); }
     }
 
