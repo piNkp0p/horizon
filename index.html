@@ -46,12 +46,13 @@
     var SYMBOL_FILL   = 1.00; // full inner square
     var SYMBOL_MARGIN = 0.04; // inner margins (fraction of cell)
 
-    // icon set (12 PNGs)
+    // icon trim
     var AUTO_TRIM_ALPHA = 8;
     var AUTO_TRIM_PAD_MIN = 4;
     var AUTO_TRIM_PAD_RATIO = 0.10;
     var USE_TRIM = true;
 
+    // 12 split PNGs
     var ICON_URLS = [
       'https://pinkp0p.github.io/horizon/zodiac_1.png',
       'https://pinkp0p.github.io/horizon/zodiac_2.png',
@@ -136,7 +137,7 @@
       ctx.restore();
     }
 
-    // background (bigger, brighter purple/blue stars + gentle twinkle)
+    // background (bigger stars than last version)
     function StarBG(W,H){
       this.w=W; this.h=H; this.t=0; this.stars=[];
       for(var i=0;i<160;i++){
@@ -145,7 +146,7 @@
         this.stars.push({
           x:Math.random()*W,
           y:Math.random()*H,
-          r:1.6+Math.random()*3.2,
+          r:0.8+Math.random()*1.4, // larger stars than before
           v:20+Math.random()*60,
           rgb: rgb,
           baseA: 0.6 + Math.random()*0.35,
@@ -172,14 +173,14 @@
         ctx.beginPath();
         ctx.arc(s.x,s.y,s.r*(0.85 + 0.15*twPhase),0,Math.PI*2);
         ctx.fillStyle=color;
-        ctx.shadowBlur=10 + 10*twPhase;
+        ctx.shadowBlur=6 + 6*twPhase;
         ctx.shadowColor=color;
         ctx.fill();
       }
       ctx.globalCompositeOperation = 'source-over';
     };
 
-    // frame + button
+    // frame + button visuals
     function lavaGradient(ctx, x, y, w, h, t){
       var g=ctx.createLinearGradient(x, y+h*Math.sin(t*0.6)*0.1, x+w, y+h*(1+Math.sin(t*0.5)*0.1));
       g.addColorStop(0.00,'#3a0d10'); g.addColorStop(0.25,'#7a1a10'); g.addColorStop(0.45,'#c32c10');
@@ -215,7 +216,7 @@
       ctx.fillStyle=tl; ctx.fillText('SPIN', cx, cy); ctx.restore();
     }
 
-    // symbol draw
+    // symbol draw (preserve aspect ratio and fit inside cell minus margins)
     function drawSymbol(ctx,sym,x,y,size){
       if(sym==='JP'){
         ctx.save(); ctx.fillStyle='#ff2b2b'; ctx.font='900 '+Math.floor(size*0.30)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('JP',x,y); ctx.restore();
@@ -257,7 +258,7 @@
       var self=this; window.addEventListener('resize',function(){ self._resize(); });
       this.last=performance.now(); this.time=0; var that=this; requestAnimationFrame(function(t){ that._loop(t); });
 
-      // Button press visual feedback using pointer events on canvas
+      // Button press feedback on canvas
       var pressActive=false;
       function withinButton(ev){ var L=self._computeLayout(); var r=L.radius; var rect=self.canvas.getBoundingClientRect(); var x=(ev.clientX-rect.left)/rect.width*self.W; var y=(ev.clientY-rect.top)/rect.height*self.H; var dx=x-L.cx, dy=y-L.cy; return dx*dx+dy*dy<=r*r; }
       this.canvas.addEventListener('pointerdown',function(e){ if(withinButton(e)){ pressActive=true; self.buttonPressed=true; self._draw(); }});
@@ -284,7 +285,7 @@
       var topY=this.machineCenter.y-rows*cell/2;
       var frameBottom=topY+rows*cell;
       var radius=Math.min(totalW*0.18, 160);
-      var cx=this.machineCenter.x; var cy=frameBottom + radius*0.70; // keep button inside viewport
+      var cx=this.machineCenter.x; var cy=frameBottom + radius*0.70; // keep inside viewport
       var betGap=34;
       var bottomExtent=cy+radius+betGap; var safeBottom=16; var safeTop=16;
       if(bottomExtent>this.H-safeBottom){
