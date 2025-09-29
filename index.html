@@ -28,7 +28,7 @@
   </div>
   <div id="soundHint" class="sound-hint" style="display:none">Tap anywhere to <b>enable sound</b> 🔊</div>
 
-  <!-- Optional HTMLAudio fallback (we'll prefer WebAudio for iOS/Firefox) -->
+  <!-- HTMLAudio fallbacks (WebAudio is preferred) -->
   <audio id="spinSound" preload="auto" playsinline muted>
     <source src="https://cdn.jsdelivr.net/gh/naptha/talkify/sounds/notification.mp3" type="audio/mpeg" />
     <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg" />
@@ -37,10 +37,14 @@
     <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/explosion-1.mp3" type="audio/mpeg" />
     <source src="https://actions.google.com/sounds/v1/explosions/explosion.ogg" type="audio/ogg" />
   </audio>
-  <!-- NEW: coin clink fallback -->
+  <!-- coin clink fallback -->
   <audio id="coinSound" preload="auto" playsinline muted>
     <source src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" type="audio/ogg" />
     <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/coin-1.mp3" type="audio/mpeg" />
+  </audio>
+  <!-- spin loop fallback (subtle whoosh loop) -->
+  <audio id="spinLoopSound" preload="auto" playsinline loop muted>
+    <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/slot_whoosh_loop.mp3" type="audio/mpeg" />
   </audio>
 
 <script>
@@ -63,10 +67,13 @@
     var gainMain=null;
     var lastCoinTime = 0; // throttle coin ticks
 
+    // spin loop state
+    var spinLoop = { g:null, whoosh:null, lfo:null, tickInt:null, usingFallback:false };
+
     function ensure(){
       if(ctx) return ctx;
       var C=window.AudioContext||window.webkitAudioContext; if(!C) return null;
-      ctx=new C({latencyHint:'interactive'}); gainMain=ctx.createGain(); gainMain.gain.value=1.0; // louder master gain
+      ctx=new C({latencyHint:'interactive'}); gainMain=ctx.createGain(); gainMain.gain.value=1.0;
       gainMain.connect(ctx.destination); return ctx;
     }
     function unlock(){
@@ -74,16 +81,19 @@
       if(c.state==='suspended'){ c.resume().catch(function(){}); }
       // Play a tiny silent buffer to satisfy iOS/Firefox gesture requirement
       var b=c.createBuffer(1, 1, 22050); var src=c.createBufferSource(); src.buffer=b; src.connect(gainMain); try{ src.start(0); }catch(_){ }
-      unlocked=true; // we'll rely on gesture call site
+      unlocked=true;
       // Also unmute HTMLAudio as fallback
-      var a1=document.getElementById('spinSound'); var a2=document.getElementById('bangSound'); var a3=document.getElementById('coinSound');
-      [a1,a2,a3].forEach(function(a){ try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){ } });
+      var a1=document.getElementById('spinSound');
+      var a2=document.getElementById('bangSound');
+      var a3=document.getElementById('coinSound');
+      var a4=document.getElementById('spinLoopSound');
+      [a1,a2,a3,a4].forEach(function(a){ try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){ } });
       return true;
     }
+
     function playSpin(){
       var c=ensure();
       if(c && unlocked){
-        // simple blip (freq sweep)
         var o=c.createOscillator(); var g=c.createGain();
         o.type='triangle'; o.frequency.value=880; o.connect(g); g.connect(gainMain);
         var now=c.currentTime; o.frequency.setValueAtTime(880, now);
@@ -94,15 +104,13 @@
         o.start(now); o.stop(now+0.18);
         return;
       }
-      // fallback
       var a=document.getElementById('spinSound'); if(a){ try{ a.muted=false; a.currentTime=0; a.play(); }catch(_){ } }
     }
+
     function playBang(){
       var c=ensure();
       if(c && unlocked){
-        // noise burst + low boom
         var dur=0.45; var now=c.currentTime;
-        // noise buffer
         var len=Math.floor(c.sampleRate*dur), buf=c.createBuffer(1,len,c.sampleRate), data=buf.getChannelData(0);
         for(var i=0;i<len;i++){ data[i]=(Math.random()*2-1)*Math.pow(1-i/len, 2.2); }
         var src=c.createBufferSource(); src.buffer=buf;
@@ -112,13 +120,19 @@
         g.gain.linearRampToValueAtTime(0.9, now+0.02);
         g.gain.exponentialRampToValueAtTime(0.0001, now+dur);
         src.start(now); src.stop(now+dur);
-        // boom oscillator
-        var o=c.createOscillator(); var g2=c.createGain(); o.type='sine'; o.frequency.setValueAtTime(120, now); o.frequency.exponentialRampToValueAtTime(50, now+0.35); g2.gain.setValueAtTime(0.0, now); g2.gain.linearRampToValueAtTime(0.8, now+0.02); g2.gain.exponentialRampToValueAtTime(0.0001, now+0.5); o.connect(g2); g2.connect(gainMain); o.start(now); o.stop(now+0.5);
+
+        var o=c.createOscillator(); var g2=c.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(120, now);
+        o.frequency.exponentialRampToValueAtTime(50, now+0.35);
+        g2.gain.setValueAtTime(0.0, now);
+        g2.gain.linearRampToValueAtTime(0.8, now+0.02);
+        g2.gain.exponentialRampToValueAtTime(0.0001, now+0.5);
+        o.connect(g2); g2.connect(gainMain); o.start(now); o.stop(now+0.5);
         return;
       }
-      // fallback
       var a=document.getElementById('bangSound'); if(a){ try{ a.muted=false; a.currentTime=0; a.play(); }catch(_){ } }
     }
+
     function playCountdown(n){
       var c=ensure();
       var freq = (n===3?880:(n===2?660:520));
@@ -134,7 +148,8 @@
       }
       var a=document.getElementById('spinSound'); if(a){ try{ a.muted=false; a.currentTime=0; a.play(); }catch(_){ } }
     }
-    // NEW: coin clink
+
+    // --- Coin clink SFX (WebAudio; falls back to HTMLAudio) ---
     function playCoin(){
       var c = ensure();
       if(c && unlocked){
@@ -163,8 +178,6 @@
         o.stop(now + 0.14);
         return;
       }
-
-      // HTMLAudio fallback
       var a = document.getElementById('coinSound');
       if(a){
         try{
@@ -175,7 +188,88 @@
       }
     }
 
-    return { ensure:ensure, unlock:unlock, playSpin:playSpin, playBang:playBang, playCountdown:playCountdown, playCoin:playCoin };
+    // --- Spin loop (whoosh + soft ticking), with HTMLAudio fallback ---
+    function startSpinLoop(){
+      var c=ensure();
+      // If WebAudio unavailable or not yet unlocked, use HTMLAudio fallback
+      if(!(c && unlocked)){
+        var af=document.getElementById('spinLoopSound');
+        if(af){ try{ af.muted=false; af.currentTime=0; af.play(); spinLoop.usingFallback=true; }catch(_){ } }
+        return;
+      }
+      if(spinLoop.g) return; // already running
+
+      var g=c.createGain(); g.gain.value=0.0; g.connect(gainMain);
+      spinLoop.g=g;
+
+      // whoosh = bandpassed noise with LFO amplitude
+      var len=c.sampleRate*1.0, buf=c.createBuffer(1, len, c.sampleRate), data=buf.getChannelData(0);
+      for(var i=0;i<len;i++){ data[i]=(Math.random()*2-1); }
+      var src=c.createBufferSource(); src.buffer=buf; src.loop=true;
+
+      var bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=700; bp.Q.value=0.9;
+
+      var lfo=c.createOscillator(); lfo.frequency.value=1.0;
+      var lfoGain=c.createGain(); lfoGain.gain.value=0.14;
+
+      var whooshGain=c.createGain(); whooshGain.gain.value=0.28;
+
+      src.connect(bp); bp.connect(whooshGain); whooshGain.connect(g);
+      lfo.connect(lfoGain); lfoGain.connect(whooshGain.gain);
+
+      var now=c.currentTime;
+      g.gain.linearRampToValueAtTime(0.6, now+0.12); // fade-in
+      src.start(now); lfo.start(now);
+
+      spinLoop.whoosh=src; spinLoop.lfo=lfo;
+
+      // soft ticking every ~120ms
+      spinLoop.tickInt=setInterval(function(){
+        var o=c.createOscillator(), eg=c.createGain(), hp=c.createBiquadFilter();
+        o.type='square'; o.frequency.setValueAtTime(1200, c.currentTime);
+        hp.type='highpass'; hp.frequency.value=800;
+        eg.gain.setValueAtTime(0, c.currentTime);
+        eg.gain.linearRampToValueAtTime(0.22, c.currentTime+0.005);
+        eg.gain.exponentialRampToValueAtTime(0.0001, c.currentTime+0.07);
+        o.connect(hp); hp.connect(eg); eg.connect(g);
+        o.start(c.currentTime);
+        o.stop(c.currentTime+0.08);
+      }, 120);
+    }
+
+    function stopSpinLoop(){
+      // stop fallback if used
+      if(spinLoop.usingFallback){
+        var af=document.getElementById('spinLoopSound');
+        if(af){ try{ af.pause(); }catch(_){ } }
+        spinLoop.usingFallback=false;
+      }
+
+      var c=ensure(); if(!c) return;
+      if(spinLoop.tickInt){ clearInterval(spinLoop.tickInt); spinLoop.tickInt=null; }
+      if(spinLoop.whoosh){ try{ spinLoop.whoosh.stop(); }catch(_){ } try{ spinLoop.whoosh.disconnect(); }catch(_){ } spinLoop.whoosh=null; }
+      if(spinLoop.lfo){ try{ spinLoop.lfo.stop(); }catch(_){ } try{ spinLoop.lfo.disconnect(); }catch(_){ } spinLoop.lfo=null; }
+      if(spinLoop.g){
+        var now=c.currentTime; // short fade-out
+        try{
+          spinLoop.g.gain.cancelScheduledValues(now);
+          spinLoop.g.gain.setValueAtTime(spinLoop.g.gain.value, now);
+          spinLoop.g.gain.linearRampToValueAtTime(0.0001, now+0.12);
+        }catch(_){}
+        setTimeout(function(){ try{ spinLoop.g.disconnect(); }catch(_){ } spinLoop.g=null; }, 140);
+      }
+    }
+
+    return {
+      ensure:ensure,
+      unlock:unlock,
+      playSpin:playSpin,
+      playBang:playBang,
+      playCountdown:playCountdown,
+      playCoin:playCoin,
+      startSpinLoop:startSpinLoop,
+      stopSpinLoop:stopSpinLoop
+    };
   })();
 
   window.addEventListener('DOMContentLoaded',function(){
@@ -189,11 +283,11 @@
       spinBaseDuration:2.0, spinStagger:0.45, cyclesBase:6, cyclesStep:2 };
     var REEL_DIR=[-1,+1,-1];
     var FRAME_RADIUS=28;
-    var FRAME_GAP_FRAC=0.12;        // gap between frame and reels (scales with cell)
-    var BUTTON_OFFSET_FRAC=0.22;     // push spin button a bit lower (scales with cell)
-    var NAV_HEIGHT_FRAC=0.58;        // nav height relative to cell (balanced)
+    var FRAME_GAP_FRAC=0.12;
+    var BUTTON_OFFSET_FRAC=0.22;
+    var NAV_HEIGHT_FRAC=0.58;
 
-    var SYMBOL_FILL=1.0, SYMBOL_MARGIN=0.04; // icon box fit
+    var SYMBOL_FILL=1.0, SYMBOL_MARGIN=0.04;
     var AUTO_TRIM_ALPHA=8, AUTO_TRIM_PAD_MIN=4, AUTO_TRIM_RATIO=0.10, USE_TRIM=true;
 
     var ICON_URLS=[
@@ -203,7 +297,7 @@
     ];
 
     // ---------------------------------------------------
-    // Utilities (getPlayerName, icons preload, etc.)
+    // Utilities
     // ---------------------------------------------------
     function getPlayerName(){
       try{
@@ -271,7 +365,7 @@
     });
 
     // ---------------------------------------------------
-    // Drawing helpers (unchanged visuals)
+    // Drawing helpers
     // ---------------------------------------------------
     function roundRectPath(ctx,x,y,w,h,r){ var rr=Math.max(0,Math.min(r,Math.min(w,h)/2)); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
     function drawDividerLine(ctx,x,topY,rows,cell,t){ ctx.save(); ctx.lineWidth=3; ctx.strokeStyle=lavaGradient(ctx,x-20,topY,40,rows*cell,t); ctx.shadowBlur=8; ctx.shadowColor='rgba(255,120,30,0.6)'; ctx.beginPath(); ctx.moveTo(x,topY); ctx.lineTo(x,topY+rows*cell); ctx.stroke(); ctx.restore(); }
@@ -289,12 +383,12 @@
     var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,'JP'];
 
     // ---------------------------------------------------
-    // Bottom navigation (cosmic theme)
+    // Bottom navigation
     // ---------------------------------------------------
     function drawNavIcon(ctx, type, cx, cy, size, grad){ var s=size; ctx.save(); ctx.strokeStyle=grad; ctx.lineWidth=Math.max(2,Math.round(s*0.10)); ctx.lineJoin='round'; ctx.lineCap='round'; if(type==='wallet'){ var w=s*1.2,h=s*0.75,r=s*0.18; var x=cx-w/2,y=cy-h/2; roundRectPath(ctx,x,y,w,h,r); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x+w*0.20,y+h*0.40); ctx.lineTo(x+w*0.80,y+h*0.40); ctx.stroke(); ctx.beginPath(); ctx.arc(x+w*0.80,y+h*0.52,s*0.06,0,Math.PI*2); ctx.stroke(); } else if(type==='home'){ var w2=s*1.15,h2=s*0.9; var x2=cx-w2/2,y2=cy-h2/2; ctx.beginPath(); ctx.moveTo(x2, y2+h2*0.45); ctx.lineTo(cx, y2); ctx.lineTo(x2+w2, y2+h2*0.45); ctx.stroke(); roundRectPath(ctx,x2+w2*0.15,y2+h2*0.40,w2*0.70,h2*0.48,s*0.10); ctx.stroke(); roundRectPath(ctx,x2+w2*0.44,y2+h2*0.56,w2*0.12,h2*0.22,s*0.06); ctx.stroke(); } else { var r2=s*0.65; ctx.beginPath(); ctx.arc(cx,cy,r2,0,Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx, cy - r2*0.55); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx + r2*0.40, cy); ctx.stroke(); ctx.beginPath(); ctx.arc(cx, cy, s*0.08, 0, Math.PI*2); ctx.stroke(); } ctx.restore(); }
 
     function drawNavButton(ctx,x,y,w,h,label,iconKey,active){
-      var r=22; ctx.save(); ctx.globalAlpha=1; ctx.fillStyle='rgba(10, 16, 40, 0.55)'; roundRectPath(ctx,x,y,w,h,r); ctx.fill(); ctx.shadowBlur=active?20:12; ctx.shadowColor=active?'rgba(110,231,255,0.6)':'rgba(124,58,237,0.35)'; ctx.strokeStyle=active?'rgba(110,231,255,0.9)':'rgba(167,139,250,0.45)'; ctx.lineWidth=active?3:2; roundRectPath(ctx,x+1.5,y+1.5,w-3,h-3,r-2); ctx.stroke(); var cx=x+w/2, cy=y+h*0.48; var grad=ctx.createLinearGradient(x,y,x+w,y+h); grad.addColorStop(0,'#6ee7ff'); grad.addColorStop(0.5,'#a78bfa'); grad.addColorStop(1,'#7dd3fc'); var baseIconSize=Math.max(26,Math.round(h*0.48)); var iconSize=iconKey==='history'?Math.round(baseIconSize*0.8):baseIconSize; drawNavIcon(ctx, iconKey, cx, cy, iconSize, grad); var labelPx=Math.max(16,Math.round(h*0.32)); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='700 '+labelPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.fillStyle=grad; ctx.shadowBlur=active?14:8; ctx.shadowColor='rgba(109, 40, 217, 0.45)'; ctx.fillText(label,cx,y+h*0.78); if(active){ ctx.save(); var ug=ctx.createLinearGradient(x,y,x+w,y); ug.addColorStop(0,'#6ee7ff'); ug.addColorStop(1,'#a78bfa'); ctx.strokeStyle=ug; ctx.lineWidth=3.2; ctx.shadowBlur=12; ctx.shadowColor='rgba(110,231,255,0.6)'; ctx.beginPath(); ctx.moveTo(x+16,y+6); ctx.lineTo(x+w-16,y+6); ctx.stroke(); ctx.restore(); } ctx.restore(); }
+      var r=22; ctx.save(); ctx.globalAlpha=1; ctx.fillStyle='rgba(10, 16, 40, 0.55)'; roundRectPath(ctx,x,y,w,h,r); ctx.fill(); ctx.shadowBlur=active?20:12; ctx.shadowColor=active?'rgba(110,231,255,0.6)':'rgba(124,58,237,0.35)'; ctx.strokeStyle=active?'rgba(110,231,255,0.9)':'rgba(167,139,250,0.45)'; ctx.lineWidth=active?3:2; roundRectPath(ctx,x+1.5,y+1.5,w-3,h-3,r-2); ctx.stroke(); var cx=x+w/2, cy=y*h*0.48; var grad=ctx.createLinearGradient(x,y,x+w,y+h); grad.addColorStop(0,'#6ee7ff'); grad.addColorStop(0.5,'#a78bfa'); grad.addColorStop(1,'#7dd3fc'); var baseIconSize=Math.max(26,Math.round(h*0.48)); var iconSize=iconKey==='history'?Math.round(baseIconSize*0.8):baseIconSize; drawNavIcon(ctx, iconKey, cx, cy, iconSize, grad); var labelPx=Math.max(16,Math.round(h*0.32)); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='700 '+labelPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.fillStyle=grad; ctx.shadowBlur=active?14:8; ctx.shadowColor='rgba(109, 40, 217, 0.45)'; ctx.fillText(label,cx,y+h*0.78); if(active){ ctx.save(); var ug=ctx.createLinearGradient(x,y,x+w,y); ug.addColorStop(0,'#6ee7ff'); ug.addColorStop(1,'#a78bfa'); ctx.strokeStyle=ug; ctx.lineWidth=3.2; ctx.shadowBlur=12; ctx.shadowColor='rgba(110,231,255,0.6)'; ctx.beginPath(); ctx.moveTo(x+16,y+6); ctx.lineTo(x+w-16,y+6); ctx.stroke(); ctx.restore(); } ctx.restore(); }
 
     // ---------------------------------------------------
     // Reveal mask & celebration
@@ -353,7 +447,7 @@
     function easeOutBounce(u){ var n1=7.5625, d1=2.75; if(u<1/d1){ return n1*u*u; } else if(u<2/d1){ u-=1.5/d1; return n1*u*u+0.75; } else if(u<2.5/d1){ u-=2.25/d1; return n1*u*u+0.9375; } else { u-=2.625/d1; return n1*u*u+0.984375; } }
 
     // ---------------------------------------------------
-    // SlotEngine (define BEFORE any prototype usage)
+    // SlotEngine
     // ---------------------------------------------------
     function SlotEngine(root){
       this.canvas=document.createElement('canvas'); this.ctx=this.canvas.getContext('2d'); root.appendChild(this.canvas);
@@ -401,7 +495,7 @@
         if(audioArmed) return; audioArmed=true;
         try{ AudioSys.unlock(); }catch(_){ }
         // also try to poke the HTMLAudio (Firefox/Android)
-        ['spinSound','bangSound','coinSound'].forEach(function(id){
+        ['spinSound','bangSound','coinSound','spinLoopSound'].forEach(function(id){
           var a=document.getElementById(id);
           try{
             if(a){
@@ -417,7 +511,6 @@
       }
 
       this.canvas.addEventListener('pointerdown',function(e){ var p=canvasToGame(e); armAudio(); if(selfRef.winState!=='idle'){ return; } if(withinButton(p)){ pressActive=true; selfRef.buttonPressed=true; selfRef._draw(); } });
-      // Also arm audio with generic gestures (iOS Safari/Firefox rules)
       ['click','touchstart','keydown'].forEach(function(ev){ document.addEventListener(ev, armAudio, {once:true,capture:true}); });
       document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible'){ try{ var c=AudioSys.ensure(); if(c&&c.state==='suspended') c.resume(); }catch(_){ } } });
       this.canvas.addEventListener('pointerup',function(e){ var p=canvasToGame(e); var was=pressActive; pressActive=false; selfRef.buttonPressed=false; selfRef._draw();
@@ -444,7 +537,18 @@
 
     SlotEngine.prototype._computeLayout=function(){ var cell=CONFIG.symbolSize, rows=CONFIG.rows, reelsN=CONFIG.reelCount; var totalW=reelsN*cell+(reelsN-1)*CONFIG.reelSpacing; var startX=this.machineCenter.x-totalW/2+cell/2; var topY=this.machineCenter.y-rows*cell/2; var frameBottom=topY+rows*cell; var radius=Math.min(totalW*0.18,160); var buttonOffset=Math.round(cell*BUTTON_OFFSET_FRAC); var cx=this.machineCenter.x; var cy=frameBottom+radius*0.70+buttonOffset; var betGap=34; var bottomExtent=cy+radius+betGap; var safeBottom=16, safeTop=16; if(bottomExtent>this.H-safeBottom){ var room=(this.H-safeBottom)-(frameBottom+betGap); var maxR=Math.max(48,room/1.6); radius=Math.min(radius,maxR); cy=frameBottom+radius*0.70+buttonOffset; } if(topY<safeTop){ var needDown=safeTop-topY; topY+=needDown; frameBottom=topY+rows*cell; cy=frameBottom+radius*0.70+buttonOffset; } return {cell:cell,rows:rows,reelsN:reelsN,totalW:totalW,startX:startX,topY:topY,frameBottom:frameBottom,cx:cx,cy:cy,radius:radius,betGap:betGap,buttonOffset:buttonOffset}; };
 
-    SlotEngine.prototype._spin=function(){ if(this.winState!=='idle') return; if(this.reels.some(function(r){return r.spinning;})) return; try{ AudioSys.playSpin(); }catch(_){ var sfx=document.getElementById('spinSound'); try{ sfx&&sfx.play&&sfx.play(); }catch(__){} } for(var i=0;i<this.reels.length;i++){ var r=this.reels[i], arr=new Array(CONFIG.rows); for(var k=0;k<CONFIG.rows;k++){ arr[k]=SYMBOLS[(Math.random()*SYMBOLS.length)|0]; } r.finalSymbols=arr; r.spinning=true; r.time=0; r.duration=CONFIG.spinBaseDuration+i*CONFIG.spinStagger; var cycles=CONFIG.cyclesBase+i*CONFIG.cyclesStep; r.totalDistPx=cycles*CONFIG.rows*CONFIG.symbolSize; r.progressPx=0; } };
+    SlotEngine.prototype._spin=function(){
+      if(this.winState!=='idle') return;
+      if(this.reels.some(function(r){return r.spinning;})) return;
+      try{ AudioSys.playSpin(); }catch(_){ var sfx=document.getElementById('spinSound'); try{ sfx&&sfx.play&&sfx.play(); }catch(__){} }
+      try{ AudioSys.startSpinLoop(); }catch(_){}
+      for(var i=0;i<this.reels.length;i++){
+        var r=this.reels[i], arr=new Array(CONFIG.rows);
+        for(var k=0;k<CONFIG.rows;k++){ arr[k]=SYMBOLS[(Math.random()*SYMBOLS.length)|0]; }
+        r.finalSymbols=arr; r.spinning=true; r.time=0; r.duration=CONFIG.spinBaseDuration+i*CONFIG.spinStagger;
+        var cycles=CONFIG.cyclesBase+i*CONFIG.cyclesStep; r.totalDistPx=cycles*CONFIG.rows*CONFIG.symbolSize; r.progressPx=0;
+      }
+    };
 
     SlotEngine.prototype.setBet=function(v){ this.bet=Math.max(1,Math.floor(v)); };
     SlotEngine.prototype.incBet=function(d){ this.setBet(this.bet+d); this._draw(); };
@@ -454,14 +558,13 @@
     SlotEngine.prototype._beginTransfer=function(){
       if(!this.transfer) this.transfer={};
       this.transfer.active=true; this.transfer.t=0; this.transfer.p=0; this.transfer.committed=false;
-      // coin path setup using current stored src & target
       var n=18; this.transfer.coins=[];
       for(var i=0;i<n;i++){
-        var delay=i/(n*1.4); // staggered
+        var delay=i/(n*1.4);
         var r=6 + Math.random()*4;
-        var cx=this.transfer.srcX + (Math.random()*2-1)*80; // control point x
-        var cy=this.transfer.srcY - 120 - Math.random()*120; // arc upwards
-        this.transfer.coins.push({delay:delay,r:r,cx:cx,cy:cy,sfx:false}); // sfx flag
+        var cx=this.transfer.srcX + (Math.random()*2-1)*80;
+        var cy=this.transfer.srcY - 120 - Math.random()*120;
+        this.transfer.coins.push({delay:delay,r:r,cx:cx,cy:cy,sfx:false});
       }
     };
 
@@ -487,15 +590,20 @@
       for(var i=0;i<this.reels.length;i++){
         var r=this.reels[i]; if(!r.spinning) continue; r.time+=dt; var u=Math.min(1,r.time/r.duration); var eased=easeOutCubic(u); r.progressPx=r.totalDistPx*eased; if(u>=1){ r.spinning=false; r.progressPx=r.totalDistPx; }
       }
+
       if(this.winState==='idle' && this._allStopped()){
+        // stop spin loop as soon as reels finish (win or no win)
+        try{ AudioSys.stopSpinLoop(); }catch(_){}
         this._checkForWin();
       }
+
       if(this.winState==='countdown'){
         var prev=Math.ceil(this.countdown);
         this.countdown -= dt; var nowI=Math.ceil(Math.max(0,this.countdown));
         if(nowI!==prev && nowI>0){ try{ AudioSys.playCountdown(nowI); }catch(_){ } }
         if(this.countdown<=0){ this._triggerReveal(); }
       }
+
       if(this.winState==='revealing'){
         this._celebrateT -= dt;
         if(!this._drop.hit){
@@ -507,7 +615,6 @@
             this._shake.time = 0.55;
           }
         } else {
-          // start coin transfer once we hit, slight delay handled by coin delays
           if(this.transfer && !this.transfer.active){ this._beginTransfer(); }
           if(this.transfer && this.transfer.active){
             this.transfer.t = Math.min(1, this.transfer.t + dt/this.transfer.dur);
@@ -515,7 +622,6 @@
             this.balanceVis = this.balance + this.winAmount * this.transfer.p;
             if(this.transfer.t>=1 && !this.transfer.committed){
               this.balance += this.winAmount; this.balanceVis=this.balance; this.winAmount=0; this.transfer.committed=true;
-              // end reveal soon after coins finish
               this._celebrateT = Math.min(this._celebrateT, 0.3);
             }
           }
@@ -532,7 +638,6 @@
     SlotEngine.prototype._draw=function(){
       var ctx=this.ctx; ctx.clearRect(0,0,this.W,this.H); this.bg.draw(ctx); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='medium';
 
-      // apply short screen-shake on bang
       var shakeX=0, shakeY=0; if(this._shake && this._shake.time>0){ var s=this._shake; var k=s.time/0.55; var m=s.mag*(k*k); shakeX=(Math.random()*2-1)*m; shakeY=(Math.random()*2-1)*m; ctx.save(); ctx.translate(shakeX, shakeY); }
 
       var L=this._computeLayout(); var cell=L.cell, rows=L.rows, reelsN=L.reelsN, totalW=L.totalW, startX=L.startX, topY=L.topY;
@@ -553,13 +658,10 @@
         else if(this.winState==='countdown') drawRowMask(ctx, rxv, ryv, rwv, rhv, this.time, String(Math.ceil(this.countdown)));
         else if(this.winState==='revealing'){
           drawCelebration(ctx, rxv, ryv, rwv, rhv, (1.6-this._celebrateT)/1.6);
-          // lightning-fast drop from top of the screen
           var centerX = rxv + rwv/2; var startY = -Math.max(40, this.H*0.22); var endY=ryv + rhv*0.52; var u=Math.max(0,Math.min(1,this._drop.t));
           var y=startY + (endY-startY)*easeOutBounce(u);
           if(!this._drop.hit){ ctx.save(); var trail=ctx.createLinearGradient(centerX, 0, centerX, y); trail.addColorStop(0,'rgba(255,255,255,0.0)'); trail.addColorStop(1,'rgba(255,208,102,0.9)'); ctx.strokeStyle=trail; ctx.lineWidth=2; ctx.shadowBlur=12; ctx.shadowColor='rgba(255,208,102,0.7)'; ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, y-4); ctx.stroke(); ctx.restore(); }
-          // store transfer source on first hit
           if(this._drop.hit && this.transfer && !this.transfer.active && !this.transfer.srcSet){ this.transfer.srcX=centerX; this.transfer.srcY=endY; this.transfer.srcSet=true; }
-          // amount text with decreasing value during transfer
           var prog = (this.transfer&&this.transfer.active)? (this.transfer.p||0) : 0; var shown = Math.round(this.winAmount * (1 - prog));
           var jitter=(this._drop.hit && this._drop.boom>0)?(Math.sin(this.time*80)*3):0; ctx.save(); var moneyGrad=ctx.createLinearGradient(centerX-60,y-20,centerX+60,y+20); moneyGrad.addColorStop(0,'#ffd066'); moneyGrad.addColorStop(1,'#ff5a0a'); ctx.fillStyle=moneyGrad; ctx.textAlign='center'; ctx.textBaseline='middle'; var fontPx=Math.max(26,Math.round(cell*0.40)); var scale=(this._drop.hit && this._drop.boom>0)? 1 + Math.max(0,this._drop.boom)*0.4 : 1; ctx.font='900 '+Math.round(fontPx*scale)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.shadowBlur=16; ctx.shadowColor='rgba(255,120,30,0.75)'; ctx.fillText((shown>0?'+$'+shown:''), centerX + jitter, y); ctx.restore(); if(this._drop.hit && this._drop.boom>0){ var k=1 - this._drop.boom / 0.6; var rr=rhv*(0.25 + k*0.55); ctx.save(); ctx.strokeStyle='rgba(255,208,102,'+(1-k)+')'; ctx.lineWidth=3 + 4*(1-k); ctx.beginPath(); ctx.arc(centerX, endY, rr, 0, Math.PI*2); ctx.stroke(); ctx.restore(); }
           // coin transfer visuals + SFX
@@ -581,36 +683,28 @@
         }
       } else { this.rowHitRect=null; }
 
-      // dividers & frame
       for(var ri=1;ri<reelsN;ri++){ var lineX=startX-cell/2+ri*(cell+CONFIG.reelSpacing)-CONFIG.reelSpacing/2; drawDividerLine(ctx,lineX,topY,rows,cell,this.time); }
       var gapPx=Math.max(1,Math.round(cell*FRAME_GAP_FRAC)); var fx=startX-cell/2-gapPx, fy=topY-gapPx, fw=totalW+gapPx*2, fh=rows*cell+gapPx*2; drawLavaFrame(ctx,fx,fy,fw,fh,FRAME_RADIUS,this.time);
 
-      // spin button
       var cx=L.cx, cy=L.cy, radius=L.radius; drawLavaButton(ctx,cx,cy,radius,this.time,this.buttonPressed);
 
-      // welcome text
       ctx.save(); var welcomeFontPx=Math.max(18,Math.round(cell*0.18)); var welcomeGrad=ctx.createLinearGradient(16,16,220,36); welcomeGrad.addColorStop(0,'#ffd066'); welcomeGrad.addColorStop(1,'#ff5a0a'); ctx.fillStyle=welcomeGrad; ctx.font='800 '+welcomeFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.shadowBlur=8; ctx.shadowColor='rgba(255,120,30,0.55)'; var welcomeText='Hi, '+this.playerName+' 👋'; var maxWelcomeW=Math.min(this.W*0.6,420); var wt=ctx.measureText(welcomeText); if(wt.width>maxWelcomeW){ while(welcomeText.length>4 && ctx.measureText(welcomeText+'…').width>maxWelcomeW){ welcomeText=welcomeText.slice(0,-1); } welcomeText+='…'; } ctx.fillText(welcomeText,16,16); ctx.restore();
 
-      // FPS chip (tap to toggle)
       ctx.save(); var frY=16+welcomeFontPx+8; this.fpsRect.y=frY; var fr=this.fpsRect; var rr=12; ctx.fillStyle='rgba(8,12,30,0.55)'; ctx.shadowBlur=10; ctx.shadowColor='rgba(109,40,217,0.35)'; roundRectPath(ctx,fr.x,fr.y,fr.w,fr.h,rr); ctx.fill(); var fg=ctx.createLinearGradient(fr.x,fr.y,fr.x+fr.w,fr.y+fr.h); fg.addColorStop(0,'rgba(167,139,250,0.9)'); fg.addColorStop(1,'rgba(110,231,255,0.9)'); ctx.lineWidth=2; ctx.strokeStyle=fg; ctx.stroke(); var textG=ctx.createLinearGradient(fr.x,fr.y,fr.x+fr.w,fr.y); textG.addColorStop(0,'#6ee7ff'); textG.addColorStop(1,'#a78bfa'); ctx.shadowBlur=8; ctx.shadowColor='rgba(110,231,255,0.4)'; ctx.font='700 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillStyle=textG; ctx.fillText('FPS', fr.x+10, fr.y+fr.h/2); if(this.showFPS){ var txt=(this.fpsEMA||0).toFixed(0); ctx.textAlign='right'; ctx.fillText(txt, fr.x+fr.w-10, fr.y+fr.h/2); } ctx.restore();
 
-      // balance ($ only) uses animated balanceVis during transfer
       ctx.save(); var balFontPx=Math.max(24,Math.round(cell*0.26)); var moneyGrad=ctx.createLinearGradient(this.W-200,0,this.W,60); moneyGrad.addColorStop(0,'#ffd066'); moneyGrad.addColorStop(1,'#ff5a0a'); ctx.fillStyle=moneyGrad; ctx.font='900 '+balFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.shadowBlur=10; ctx.shadowColor='rgba(255,120,30,0.65)'; ctx.fillText('$'+Math.round(this.balanceVis),this.W-20,16); ctx.restore();
 
-      // bet amount (left of spin) + +/- controls (top/bottom)
       ctx.save(); var betFontPx=Math.max(22,Math.round(cell*0.24)); var leftOffset=Math.max(radius*1.5, Math.round(cell*1.0)); var bx=cx-leftOffset, by=cy; var navH=Math.max(64,Math.round(cell*NAV_HEIGHT_FRAC)); var margin=10; var maxY=this.H-navH-margin-Math.round(cell*0.2); if(by>maxY) by=maxY; if(bx>this.W-margin) bx=this.W-margin; if(bx<margin) bx=margin; var betText='$'+(this.editingBet?this.betDraft:this.bet); var betGrad=ctx.createLinearGradient(bx-40,by-20,bx+40,by+20); betGrad.addColorStop(0,'#ffb34a'); betGrad.addColorStop(1,'#ffd066'); ctx.fillStyle=betGrad; ctx.font='900 '+betFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.shadowBlur=8; ctx.shadowColor='rgba(255,120,30,0.55)'; ctx.fillText(betText,bx,by+1); var metrics=ctx.measureText(betText); var textW=Math.max(metrics.width, betFontPx*1.4); var textH=Math.round(betFontPx*1.2); this.betRect={ x: Math.round(bx - textW/2 - 8), y: Math.round(by - textH/2 - 8), w: Math.round(textW + 16), h: Math.round(textH + 16) }; var ctlFontPx=Math.max(20,Math.round(betFontPx*0.85)); ctx.font='900 '+ctlFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.fillStyle='#ffd066'; var plusY=by-textH*0.9-ctlFontPx*0.6; ctx.fillText('+',bx,plusY); var plusW=ctx.measureText('+').width, plusH=Math.round(ctlFontPx*1.1); this.betPlusRect={x:Math.round(bx-plusW/2)-6,y:Math.round(plusY-plusH/2)-4,w:Math.round(plusW)+12,h:plusH+8}; var minusY=by+textH*0.9+ctlFontPx*0.6; ctx.fillText('-',bx,minusY); var minusW=ctx.measureText('-').width, minusH=Math.round(ctlFontPx*1.1); this.betMinusRect={x:Math.round(bx-minusW/2)-6,y:Math.round(minusY-minusH/2)-4,w:Math.round(minusW)+12,h:minusH+8}; if(this.editingBet){ var caretOn=((this._caretBlink*2)|0)%2===0; if(caretOn){ var caretX=bx+textW/2+6; var caretY=by-textH*0.45; ctx.save(); var cg=ctx.createLinearGradient(caretX,caretY,caretX,caretY+textH*0.9); cg.addColorStop(0,'#ffd066'); cg.addColorStop(1,'#ffb34a'); ctx.fillStyle=cg; ctx.fillRect(Math.round(caretX), Math.round(caretY), 3, Math.round(textH*0.9)); ctx.restore(); } } ctx.restore();
 
-      // bottom nav
       var navH2=Math.max(64,Math.round(cell*NAV_HEIGHT_FRAC)); this._drawNav(ctx,L,navH2);
 
-      // end shake transform
       if(this._shake && this._shake.time>0){ ctx.restore(); }
     };
 
     SlotEngine.prototype._drawNav=function(ctx,L,navH){ var pad=12; var w=this.W-pad*2; var h=navH; var x=pad; var y=this.H-h-8; ctx.save(); ctx.globalAlpha=1; ctx.fillStyle='rgba(8,12,30,0.55)'; roundRectPath(ctx,x,y,w,h,26); ctx.fill(); var bg=ctx.createLinearGradient(x,y,x+w,y+h); bg.addColorStop(0,'rgba(167,139,250,0.55)'); bg.addColorStop(1,'rgba(110,231,255,0.55)'); ctx.strokeStyle=bg; ctx.lineWidth=2; ctx.shadowBlur=14; ctx.shadowColor='rgba(109,40,217,0.35)'; ctx.stroke(); ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.restore(); var n=this.nav.items.length; var bw=w/n; this.nav.rects=[]; for(var i=0;i<n;i++){ var bx=x+i*bw, by=y; var rect={x:bx,y:by,w:bw,h:h}; this.nav.rects.push(rect); var it=this.nav.items[i]; drawNavButton(ctx, rect.x+8, rect.y+8, rect.w-16, rect.h-16, it.label, it.icon, this.nav.active===it.key); } };
 
     // ---------------------------------------------------
-    // Tests (kept & extended)
+    // Tests
     // ---------------------------------------------------
     function assert(c,m){ if(!c){ throw new Error('[TEST FAIL] '+m); } }
     function nearly(a,b,eps){ return Math.abs(a-b) <= (eps||1e-6); }
