@@ -61,10 +61,12 @@
   var AudioSys=(function(){
     var ctx=null, unlocked=false;
     var gainMain=null;
-    var lastCoinTime = 0; // throttle coin ticks
 
-    // spin tick-only state
-    var spinLoop = { g:null, tickInt:null, usingFallback:false };
+    // Ticker state (frame-driven)
+    var tickAcc = 0;           // seconds
+    var tickAccMs = 0;         // ms for fallback
+    var tickLastHz = 0;
+    var lastCoinTime = 0;      // throttle coin ticks
 
     function ensure(){
       if(ctx) return ctx;
@@ -75,23 +77,24 @@
     function unlock(){
       var c=ensure(); if(!c) return false;
       if(c.state==='suspended'){ c.resume().catch(function(){}); }
-      // Play a tiny silent buffer to satisfy gesture requirement
+      // Play a tiny silent buffer to satisfy iOS/Firefox gesture requirement
       var b=c.createBuffer(1, 1, 22050); var src=c.createBufferSource(); src.buffer=b; src.connect(gainMain); try{ src.start(0); }catch(_){ }
       unlocked=true;
       // Also unmute HTMLAudio as fallback
-      var a1=document.getElementById('spinSound');
-      var a2=document.getElementById('bangSound');
-      var a3=document.getElementById('coinSound');
-      [a1,a2,a3].forEach(function(a){ try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){ } });
+      ['spinSound','bangSound','coinSound'].forEach(function(id){
+        var a=document.getElementById(id);
+        try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){}
+      });
       return true;
     }
 
-    function playSpin(){
+    function playSpin(){ // short "tap" when pressing SPIN (kept)
       var c=ensure();
       if(c && unlocked){
         var o=c.createOscillator(); var g=c.createGain();
         o.type='triangle'; o.frequency.value=880; o.connect(g); g.connect(gainMain);
-        var now=c.currentTime; o.frequency.setValueAtTime(880, now);
+        var now=c.currentTime;
+        o.frequency.setValueAtTime(880, now);
         o.frequency.exponentialRampToValueAtTime(1760, now+0.08);
         g.gain.setValueAtTime(0.0, now);
         g.gain.linearRampToValueAtTime(0.6, now+0.01);
@@ -144,6 +147,56 @@
       var a=document.getElementById('spinSound'); if(a){ try{ a.muted=false; a.currentTime=0; a.play(); }catch(_){ } }
     }
 
+    // --- Ticking sound burst (one tick) ---
+    function playTick(){
+      var c=ensure();
+      if(c && unlocked){
+        var now=c.currentTime;
+        var o=c.createOscillator(), eg=c.createGain(), hp=c.createBiquadFilter();
+        o.type='square';
+        o.frequency.setValueAtTime(1200, now);
+        hp.type='highpass'; hp.frequency.value=800;
+        eg.gain.setValueAtTime(0, now);
+        eg.gain.linearRampToValueAtTime(0.22, now+0.005);
+        eg.gain.exponentialRampToValueAtTime(0.0001, now+0.07);
+        o.connect(hp); hp.connect(eg); eg.connect(gainMain);
+        o.start(now);
+        o.stop(now+0.08);
+        return;
+      }
+      var a=document.getElementById('spinSound');
+      if(a){ try{ a.currentTime=0; a.play(); }catch(_){} }
+    }
+
+    // Frame-driven ticker: call this every frame while spinning
+    // dt in seconds, hz desired ticks per second (6..18 by default)
+    function tick(dt, hz){
+      hz = Math.max(1, Math.min(30, hz||10)); // clamp
+      var c = ensure();
+      if(c && unlocked){
+        tickAcc += dt;
+        var period = 1 / hz;
+        while(tickAcc >= period){
+          tickAcc -= period;
+          playTick();
+        }
+        tickLastHz = hz;
+      } else {
+        // fallback timer using ms
+        tickAccMs += dt*1000;
+        var periodMs = 1000 / hz;
+        while(tickAccMs >= periodMs){
+          tickAccMs -= periodMs;
+          playTick();
+        }
+        tickLastHz = hz;
+      }
+    }
+
+    function resetTicker(){
+      tickAcc = 0; tickAccMs = 0; tickLastHz = 0;
+    }
+
     // --- Coin clink SFX (WebAudio; falls back to HTMLAudio) ---
     function playCoin(){
       var c = ensure();
@@ -183,58 +236,6 @@
       }
     }
 
-    // --- Spin loop: ticking only (no whoosh) + HTMLAudio fallback beeps ---
-    function startSpinLoop(){
-      var c=ensure();
-      // Fallback (no WebAudio / not unlocked): beep using spinSound
-      if(!(c && unlocked)){
-        if(spinLoop.tickInt) return;
-        var a=document.getElementById('spinSound');
-        if(!a) return;
-        spinLoop.usingFallback = true;
-        spinLoop.tickInt = setInterval(function(){
-          try{ a.currentTime = 0; a.play(); }catch(_){}
-        }, 120);
-        return;
-      }
-      if(spinLoop.g) return; // already running
-      var g=c.createGain(); g.gain.value=1.0; g.connect(gainMain);
-      spinLoop.g=g;
-
-      // soft ticking every ~120ms
-      spinLoop.tickInt=setInterval(function(){
-        var now=c.currentTime;
-        var o=c.createOscillator(), eg=c.createGain(), hp=c.createBiquadFilter();
-        o.type='square'; o.frequency.setValueAtTime(1200, now);
-        hp.type='highpass'; hp.frequency.value=800;
-        eg.gain.setValueAtTime(0, now);
-        eg.gain.linearRampToValueAtTime(0.22, now+0.005);
-        eg.gain.exponentialRampToValueAtTime(0.0001, now+0.07);
-        o.connect(hp); hp.connect(eg); eg.connect(g);
-        o.start(now);
-        o.stop(now+0.08);
-      }, 120);
-    }
-
-    function stopSpinLoop(){
-      // stop fallback if used
-      if(spinLoop.usingFallback){
-        if(spinLoop.tickInt){ clearInterval(spinLoop.tickInt); spinLoop.tickInt=null; }
-        spinLoop.usingFallback=false;
-      }
-      var c=ensure(); // ok if null
-      if(spinLoop.tickInt){ clearInterval(spinLoop.tickInt); spinLoop.tickInt=null; }
-      if(spinLoop.g){
-        try{
-          // tiny fade-out just in case a tick is in-flight
-          var now=c?c.currentTime:0;
-          spinLoop.g.gain.setValueAtTime(spinLoop.g.gain.value, now||0);
-          if(c) spinLoop.g.gain.linearRampToValueAtTime(0.0001, now+0.08);
-        }catch(_){}
-        setTimeout(function(){ try{ spinLoop.g.disconnect(); }catch(_){ } spinLoop.g=null; }, 90);
-      }
-    }
-
     return {
       ensure:ensure,
       unlock:unlock,
@@ -242,8 +243,8 @@
       playBang:playBang,
       playCountdown:playCountdown,
       playCoin:playCoin,
-      startSpinLoop:startSpinLoop,
-      stopSpinLoop:stopSpinLoop
+      tick:tick,
+      resetTicker:resetTicker
     };
   })();
 
@@ -363,7 +364,7 @@
     function drawNavIcon(ctx, type, cx, cy, size, grad){ var s=size; ctx.save(); ctx.strokeStyle=grad; ctx.lineWidth=Math.max(2,Math.round(s*0.10)); ctx.lineJoin='round'; ctx.lineCap='round'; if(type==='wallet'){ var w=s*1.2,h=s*0.75,r=s*0.18; var x=cx-w/2,y=cy-h/2; roundRectPath(ctx,x,y,w,h,r); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x+w*0.20,y+h*0.40); ctx.lineTo(x+w*0.80,y+h*0.40); ctx.stroke(); ctx.beginPath(); ctx.arc(x+w*0.80,y+h*0.52,s*0.06,0,Math.PI*2); ctx.stroke(); } else if(type==='home'){ var w2=s*1.15,h2=s*0.9; var x2=cx-w2/2,y2=cy-h2/2; ctx.beginPath(); ctx.moveTo(x2, y2+h2*0.45); ctx.lineTo(cx, y2); ctx.lineTo(x2+w2, y2+h2*0.45); ctx.stroke(); roundRectPath(ctx,x2+w2*0.15,y2+h2*0.40,w2*0.70,h2*0.48,s*0.10); ctx.stroke(); roundRectPath(ctx,x2+w2*0.44,y2+h2*0.56,w2*0.12,h2*0.22,s*0.06); ctx.stroke(); } else { var r2=s*0.65; ctx.beginPath(); ctx.arc(cx,cy,r2,0,Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx, cy - r2*0.55); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx + r2*0.40, cy); ctx.stroke(); ctx.beginPath(); ctx.arc(cx, cy, s*0.08, 0, Math.PI*2); ctx.stroke(); } ctx.restore(); }
 
     function drawNavButton(ctx,x,y,w,h,label,iconKey,active){
-      var r=22; ctx.save(); ctx.globalAlpha=1; ctx.fillStyle='rgba(10, 16, 40, 0.55)'; roundRectPath(ctx,x,y,w,h,r); ctx.fill(); ctx.shadowBlur=active?20:12; ctx.shadowColor=active?'rgba(110,231,255,0.6)':'rgba(124,58,237,0.35)'; ctx.strokeStyle=active?'rgba(110,231,255,0.9)':'rgba(167,139,250,0.45)'; ctx.lineWidth=active?3:2; roundRectPath(ctx,x+1.5,y+1.5,w-3,h-3,r-2); ctx.stroke(); var cx=x+w/2, cy=y*h*0.48; var grad=ctx.createLinearGradient(x,y,x+w,y+h); grad.addColorStop(0,'#6ee7ff'); grad.addColorStop(0.5,'#a78bfa'); grad.addColorStop(1,'#7dd3fc'); var baseIconSize=Math.max(26,Math.round(h*0.48)); var iconSize=iconKey==='history'?Math.round(baseIconSize*0.8):baseIconSize; drawNavIcon(ctx, iconKey, cx, cy, iconSize, grad); var labelPx=Math.max(16,Math.round(h*0.32)); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='700 '+labelPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.fillStyle=grad; ctx.shadowBlur=active?14:8; ctx.shadowColor='rgba(109, 40, 217, 0.45)'; ctx.fillText(label,cx,y+h*0.78); if(active){ ctx.save(); var ug=ctx.createLinearGradient(x,y,x+w,y); ug.addColorStop(0,'#6ee7ff'); ug.addColorStop(1,'#a78bfa'); ctx.strokeStyle=ug; ctx.lineWidth=3.2; ctx.shadowBlur=12; ctx.shadowColor='rgba(110,231,255,0.6)'; ctx.beginPath(); ctx.moveTo(x+16,y+6); ctx.lineTo(x+w-16,y+6); ctx.stroke(); ctx.restore(); } ctx.restore(); }
+      var r=22; ctx.save(); ctx.globalAlpha=1; ctx.fillStyle='rgba(10, 16, 40, 0.55)'; roundRectPath(ctx,x,y,w,h,r); ctx.fill(); ctx.shadowBlur=active?20:12; ctx.shadowColor=active?'rgba(110,231,255,0.6)':'rgba(124,58,237,0.35)'; ctx.strokeStyle=active?'rgba(110,231,255,0.9)':'rgba(167,139,250,0.45)'; ctx.lineWidth=active?3:2; roundRectPath(ctx,x+1.5,y+1.5,w-3,h-3,r-2); ctx.stroke(); var cx=x+w/2, cy=y+h*0.48; var grad=ctx.createLinearGradient(x,y,x+w,y+h); grad.addColorStop(0,'#6ee7ff'); grad.addColorStop(0.5,'#a78bfa'); grad.addColorStop(1,'#7dd3fc'); var baseIconSize=Math.max(26,Math.round(h*0.48)); var iconSize=iconKey==='history'?Math.round(baseIconSize*0.8):baseIconSize; drawNavIcon(ctx, iconKey, cx, cy, iconSize, grad); var labelPx=Math.max(16,Math.round(h*0.32)); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='700 '+labelPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.fillStyle=grad; ctx.shadowBlur=active?14:8; ctx.shadowColor='rgba(109, 40, 217, 0.45)'; ctx.fillText(label,cx,y+h*0.78); if(active){ ctx.save(); var ug=ctx.createLinearGradient(x,y,x+w,y); ug.addColorStop(0,'#6ee7ff'); ug.addColorStop(1,'#a78bfa'); ctx.strokeStyle=ug; ctx.lineWidth=3.2; ctx.shadowBlur=12; ctx.shadowColor='rgba(110,231,255,0.6)'; ctx.beginPath(); ctx.moveTo(x+16,y+6); ctx.lineTo(x+w-16,y+6); ctx.stroke(); ctx.restore(); } ctx.restore(); }
 
     // ---------------------------------------------------
     // Reveal mask & celebration
@@ -418,7 +419,9 @@
     // ---------------------------------------------------
     // Easing helpers
     // ---------------------------------------------------
-    function easeOutCubic(u){return 1-Math.pow(1-u,3);} function imod(n,m){return ((n%m)+m)%m;}
+    function easeOutCubic(u){return 1-Math.pow(1-u,3);}
+    function easeOutCubicDerivative(u){ return 3*Math.pow(1-u,2); } // d/du
+    function imod(n,m){return ((n%m)+m)%m;}
     function easeOutBounce(u){ var n1=7.5625, d1=2.75; if(u<1/d1){ return n1*u*u; } else if(u<2/d1){ u-=1.5/d1; return n1*u*u+0.75; } else if(u<2.5/d1){ u-=2.25/d1; return n1*u*u+0.9375; } else { u-=2.625/d1; return n1*u*u+0.984375; } }
 
     // ---------------------------------------------------
@@ -516,13 +519,15 @@
       if(this.winState!=='idle') return;
       if(this.reels.some(function(r){return r.spinning;})) return;
       try{ AudioSys.playSpin(); }catch(_){ var sfx=document.getElementById('spinSound'); try{ sfx&&sfx.play&&sfx.play(); }catch(__){} }
-      try{ AudioSys.startSpinLoop(); }catch(_){}
+      // set up new reels
       for(var i=0;i<this.reels.length;i++){
         var r=this.reels[i], arr=new Array(CONFIG.rows);
         for(var k=0;k<CONFIG.rows;k++){ arr[k]=SYMBOLS[(Math.random()*SYMBOLS.length)|0]; }
         r.finalSymbols=arr; r.spinning=true; r.time=0; r.duration=CONFIG.spinBaseDuration+i*CONFIG.spinStagger;
         var cycles=CONFIG.cyclesBase+i*CONFIG.cyclesStep; r.totalDistPx=cycles*CONFIG.rows*CONFIG.symbolSize; r.progressPx=0;
       }
+      // reset ticker accumulator so ticks start crisp
+      try{ AudioSys.resetTicker(); }catch(_){}
     };
 
     SlotEngine.prototype.setBet=function(v){ this.bet=Math.max(1,Math.floor(v)); };
@@ -562,13 +567,42 @@
     SlotEngine.prototype._triggerReveal=function(){ this.winState='revealing'; this._celebrateT=1.6; this._drop.t=0; this._drop.hit=false; this._drop.boom=0; this._drop.dur=0.35; this._pendingBangPlayed=false; this.transfer={active:false,t:0,p:0,dur:2.0,coins:[],committed:false, srcX:0,srcY:0,tgtX:this.W-40,tgtY:26}; };
 
     SlotEngine.prototype._updateReels=function(dt){
+      // Update reels
       for(var i=0;i<this.reels.length;i++){
-        var r=this.reels[i]; if(!r.spinning) continue; r.time+=dt; var u=Math.min(1,r.time/r.duration); var eased=easeOutCubic(u); r.progressPx=r.totalDistPx*eased; if(u>=1){ r.spinning=false; r.progressPx=r.totalDistPx; }
+        var r=this.reels[i]; if(!r.spinning) continue;
+        r.time+=dt;
+        var u=Math.min(1,r.time/r.duration);
+        var eased=easeOutCubic(u);
+        r.progressPx=r.totalDistPx*eased;
+        if(u>=1){ r.spinning=false; r.progressPx=r.totalDistPx; }
+      }
+
+      // Adaptive ticking while any reel spins:
+      var anySpinning=false, maxV=0, maxV0=0;
+      for(var i=0;i<this.reels.length;i++){
+        var rr=this.reels[i];
+        if(rr.spinning){
+          anySpinning=true;
+          var u = Math.min(1, rr.time/rr.duration);
+          // instantaneous velocity: d/dt( totalDist * easeOutCubic(u) )
+          // = totalDist * (d/du ease) * (1/duration)
+          var v = rr.totalDistPx * easeOutCubicDerivative(u) / rr.duration; // px/sec
+          if(v>maxV) maxV=v;
+          // peak velocity occurs near u=0: v0 ≈ totalDist * 3 / duration
+          var v0 = rr.totalDistPx * 3 / rr.duration;
+          if(v0>maxV0) maxV0=v0;
+        }
+      }
+      if(anySpinning){
+        // Map velocity to tick Hz (perceptual sweet spot)
+        var minHz=6, maxHz=18;
+        var norm = (maxV0>0)? (maxV / maxV0) : 0; // 0..1
+        var targetHz = minHz + norm*(maxHz-minHz);
+        try{ AudioSys.tick(dt, targetHz); }catch(_){}
       }
 
       if(this.winState==='idle' && this._allStopped()){
-        // stop spin ticking as soon as reels finish (win or no win)
-        try{ AudioSys.stopSpinLoop(); }catch(_){}
+        // Reels fully stopped now → evaluate win
         this._checkForWin();
       }
 
@@ -605,6 +639,7 @@
         if(this._shake.time>0){ this._shake.time = Math.max(0, this._shake.time - dt); }
         if(this._celebrateT<=0){ this.winState='idle'; this.hiddenRow=-1; }
       }
+
       this.bg.update(dt); this._caretBlink += dt;
     };
 
@@ -630,6 +665,7 @@
         var rxv=startX - cell/2; var ryv=topY + this.hiddenRow*cell; var rwv=totalW; var rhv=cell;
         this.rowHitRect={x:rxv,y:ryv,w:rwv,h:rhv};
         if(this.winState==='hidden')      drawRowMask(ctx, rxv, ryv, rwv, rhv, this.time, 'Tap to reveal');
+        else if(this.winState==='countdown') draw RowMask? // (leave as is)
         else if(this.winState==='countdown') drawRowMask(ctx, rxv, ryv, rwv, rhv, this.time, String(Math.ceil(this.countdown)));
         else if(this.winState==='revealing'){
           drawCelebration(ctx, rxv, ryv, rwv, rhv, (1.6-this._celebrateT)/1.6);
@@ -640,7 +676,7 @@
           var prog = (this.transfer&&this.transfer.active)? (this.transfer.p||0) : 0; var shown = Math.round(this.winAmount * (1 - prog));
           var jitter=(this._drop.hit && this._drop.boom>0)?(Math.sin(this.time*80)*3):0;
           ctx.save();
-          // plain yellow amount text (no gradient)
+          // plain yellow amount text
           ctx.fillStyle = '#ffff00';
           ctx.textAlign='center'; ctx.textBaseline='middle';
           var fontPx=Math.max(26,Math.round(cell*0.40)); var scale=(this._drop.hit && this._drop.boom>0)? 1 + Math.max(0,this._drop.boom)*0.4 : 1;
