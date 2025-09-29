@@ -14,11 +14,18 @@
     .sound-hint{position:fixed;left:16px;bottom:16px;z-index:30;background:rgba(8,12,30,.75);color:#fff;border-radius:14px;padding:10px 14px;font:700 14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.35);border:1px solid rgba(167,139,250,.45)}
     .sound-hint b{background:linear-gradient(90deg,#ffd066,#ff5a0a);-webkit-background-clip:text;background-clip:text;color:transparent}
 
-    /* Splash (preloader) — same full-screen size as game */
-    #splash {
-      position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+    /* Splash (preloader) — match the game canvas CSS size exactly */
+    #splash{
+      position: absolute;            /* centered overlay, sized by JS to match canvas CSS size */
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%,-50%);
+      z-index: 50;
+      display: grid;
+      place-items: center;
       background: radial-gradient(1200px 1200px at 50% 20%, #0a1030 0%, #030616 45%, #010314 100%);
       transition: opacity .45s ease, visibility .45s ease;
+      /* width & height set by syncSplashToCanvas() */
     }
     #splash.hide { opacity: 0; visibility: hidden; }
 
@@ -35,12 +42,7 @@
       backdrop-filter: blur(6px);
       display: grid; gap: 14px; justify-items: center;
     }
-
-    .brand {
-      display: grid; gap: 12px; justify-items: center;
-      margin-bottom: 4px;
-    }
-    /* Animated constellation badge container */
+    .brand { display: grid; gap: 12px; justify-items: center; margin-bottom: 4px; }
     .brand-badge {
       width: 88px; height: 88px; border-radius: 999px; position: relative; overflow: hidden;
       background: radial-gradient(circle at 40% 35%, #0c153a, #070b24 70%, #040618 100%);
@@ -48,60 +50,22 @@
       box-shadow: 0 0 16px rgba(110,231,255,.25), inset 0 0 22px rgba(167,139,250,.18);
       display: grid; place-items: center;
     }
-    #constellation {
-      width: 76px; height: 76px;
-      filter: drop-shadow(0 0 8px rgba(110,231,255,.35));
-    }
-
+    #constellation { width: 76px; height: 76px; filter: drop-shadow(0 0 8px rgba(110,231,255,.35)); }
     .brand-title {
-      font: 900 28px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      letter-spacing: 1.6px;
+      font: 900 28px system-ui,-apple-system,Segoe UI,Roboto,sans-serif; letter-spacing: 1.6px;
       background: linear-gradient(90deg,#6ee7ff,#a78bfa,#7dd3fc);
       -webkit-background-clip: text; background-clip: text; color: transparent;
       text-shadow: 0 0 18px rgba(110,231,255,.25);
     }
-    .brand-sub {
-      text-align: center;
-      margin-top: -6px;
-      color: rgba(203,213,255,.9);
-      font: 600 13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      letter-spacing: .4px;
-    }
+    .brand-sub { text-align: center; margin-top: -6px; color: rgba(203,213,255,.9); font: 600 13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif; letter-spacing: .4px; }
 
-    .bar {
-      width: 100%;
-      position: relative; height: 18px; border-radius: 14px;
-      background: rgba(12,17,40,.6);
-      border: 1px solid rgba(167,139,250,.35);
-      overflow: hidden;
-      box-shadow: inset 0 8px 22px rgba(0,0,0,.35);
-    }
-    .bar-fill {
-      position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
-      background: linear-gradient(90deg,#6ee7ff,#a78bfa,#7dd3fc);
-      box-shadow: 0 0 18px rgba(110,231,255,.35);
-      transition: width .18s ease;
-    }
+    .bar { width: 100%; position: relative; height: 18px; border-radius: 14px; background: rgba(12,17,40,.6); border: 1px solid rgba(167,139,250,.35); overflow: hidden; box-shadow: inset 0 8px 22px rgba(0,0,0,.35); }
+    .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: linear-gradient(90deg,#6ee7ff,#a78bfa,#7dd3fc); box-shadow: 0 0 18px rgba(110,231,255,.35); transition: width .18s ease; }
     .bar-glow { pointer-events: none; position: absolute; inset: -1.5px; border-radius: 14px; box-shadow: 0 0 0 2px rgba(110,231,255,.12) inset, 0 0 22px rgba(110,231,255,.22); }
-    .bar-text {
-      margin-top: 10px;
-      font: 800 14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      width: 100%;
-      text-align: right;
-      background: linear-gradient(90deg,#ffd066,#ff5a0a);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-      text-shadow: 0 0 12px rgba(255,120,30,.35);
-    }
+    .bar-text { margin-top: 10px; font: 800 14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif; width: 100%; text-align: right; background: linear-gradient(90deg,#ffd066,#ff5a0a); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 0 12px rgba(255,120,30,.35); }
 
-    .splash-foot {
-      margin-top: 4px;
-      width: 100%;
-      display: flex; justify-content: space-between; align-items: center;
-      color: rgba(203,213,255,.75);
-      font: 600 12px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    }
-    .dot-stars {
-      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    .splash-foot { margin-top: 4px; width: 100%; display: flex; justify-content: space-between; align-items: center; color: rgba(203,213,255,.75); font: 600 12px system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .dot-stars { position: absolute; inset: 0; pointer-events: none; z-index: 0;
       background-image:
         radial-gradient(1px 1px at 20% 30%, rgba(110,231,255,.55) 0, transparent 60%),
         radial-gradient(1px 1px at 80% 20%, rgba(167,139,250,.55) 0, transparent 60%),
@@ -141,7 +105,7 @@
     <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/coin-1.mp3" type="audio/mpeg" />
   </audio>
 
-  <!-- SPLASH / PRELOADER (full screen) -->
+  <!-- SPLASH / PRELOADER (exact game size; JS sets width/height) -->
   <div id="splash" role="status" aria-live="polite">
     <div class="dot-stars"></div>
     <div class="splash-wrap">
@@ -178,81 +142,106 @@
   window.addEventListener('unhandledrejection',function(e){ var r=e && e.reason; show('Unhandled: '+(r && (r.message||r))); });
 
   // -----------------------------------------------------
+  // Splash ↔ Canvas size sync
+  // -----------------------------------------------------
+  var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
+    spinBaseDuration:2.0, spinStagger:0.45, cyclesBase:6, cyclesStep:2 };
+
+  function syncSplashToCanvas(){
+    var splash = document.getElementById('splash');
+    var root = document.getElementById('game');
+    if(!splash || !root) return;
+
+    var cvs = root.querySelector('canvas');
+    if(!cvs){
+      // before engine mounts, emulate the scale used by _resize()
+      var vw = (window.visualViewport ? window.visualViewport.width : window.innerWidth);
+      var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+      var scale = Math.min(vw/CONFIG.width, vh/CONFIG.height);
+      splash.style.width  = Math.floor(CONFIG.width * scale) + 'px';
+      splash.style.height = Math.floor(CONFIG.height * scale) + 'px';
+      return;
+    }
+    // match the rendered CSS size of the canvas (not its internal pixel buffer)
+    var cs = getComputedStyle(cvs);
+    var csw = parseFloat(cs.width);
+    var csh = parseFloat(cs.height);
+    splash.style.width  = Math.round(csw) + 'px';
+    splash.style.height = Math.round(csh) + 'px';
+  }
+
+  // Keep splash size in sync with canvas scaling and viewport changes
+  window.addEventListener('DOMContentLoaded', syncSplashToCanvas);
+  window.addEventListener('resize', syncSplashToCanvas);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', syncSplashToCanvas);
+
+  // -----------------------------------------------------
   // Animated Constellation Logo (splash)
   // -----------------------------------------------------
   (function(){
-    var cvs = document.getElementById('constellation');
-    if(!cvs) return;
-    var ctx = cvs.getContext('2d');
-    var W = cvs.width, H = cvs.height, t0 = performance.now();
-    var running = true;
+    function run(){
+      var cvs = document.getElementById('constellation');
+      if(!cvs) return;
+      var ctx = cvs.getContext('2d');
+      var W = cvs.width, H = cvs.height, t0 = performance.now();
+      var running = true;
 
-    // Tiny star cluster (positions relative to center)
-    var nodes = [
-      {x:-20,y:-8}, {x:-5,y:-18}, {x:12,y:-10}, {x:20,y:5},
-      {x:8,y:18}, {x:-10,y:12}, {x:-18,y:2}
-    ];
-    var edges = [
-      [0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,0], // ring
-      [1,4],[2,5]                                // diagonals
-    ];
+      var nodes = [
+        {x:-20,y:-8}, {x:-5,y:-18}, {x:12,y:-10}, {x:20,y:5},
+        {x:8,y:18}, {x:-10,y:12}, {x:-18,y:2}
+      ];
+      var edges = [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,0],[1,4],[2,5]];
 
-    function draw(now){
-      if(!running) return;
-      var t = (now - t0)/1000;
-      ctx.clearRect(0,0,W,H);
+      function draw(now){
+        if(!running) return;
+        var t = (now - t0)/1000;
+        ctx.clearRect(0,0,W,H);
 
-      // slow rotation
-      var rot = t*0.35; // rad/sec
-      var cx = W/2, cy = H/2;
+        var rot = t*0.35;
+        var cx = W/2, cy = H/2;
 
-      // backdrop radial glow
-      var rg = ctx.createRadialGradient(cx,cy,8,cx,cy,36);
-      rg.addColorStop(0,'rgba(110,231,255,0.22)');
-      rg.addColorStop(1,'rgba(167,139,250,0.04)');
-      ctx.fillStyle = rg;
-      ctx.beginPath(); ctx.arc(cx,cy,36,0,Math.PI*2); ctx.fill();
+        var rg = ctx.createRadialGradient(cx,cy,8,cx,cy,36);
+        rg.addColorStop(0,'rgba(110,231,255,0.22)');
+        rg.addColorStop(1,'rgba(167,139,250,0.04)');
+        ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx,cy,36,0,Math.PI*2); ctx.fill();
 
-      // twinkle factor
-      var tw = 0.5+0.5*Math.sin(t*2.1);
+        var tw = 0.5+0.5*Math.sin(t*2.1);
+        var pts = nodes.map(function(n){
+          var x = n.x*Math.cos(rot) - n.y*Math.sin(rot);
+          var y = n.x*Math.sin(rot) + n.y*Math.cos(rot);
+          return {x: cx + x, y: cy + y};
+        });
 
-      // compute rotated positions
-      var pts = nodes.map(function(n){
-        var x = n.x*Math.cos(rot) - n.y*Math.sin(rot);
-        var y = n.x*Math.sin(rot) + n.y*Math.cos(rot);
-        return {x: cx + x, y: cy + y};
-      });
+        ctx.lineCap='round'; ctx.lineJoin='round';
+        edges.forEach(function(e){
+          var a = pts[e[0]], b = pts[e[1]];
+          var lg = ctx.createLinearGradient(a.x,a.y,b.x,b.y);
+          lg.addColorStop(0,'rgba(110,231,255,'+(0.45+0.35*tw)+')');
+          lg.addColorStop(1,'rgba(167,139,250,'+(0.35+0.25*tw)+')');
+          ctx.strokeStyle = lg; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        });
 
-      // draw edges with gradient stroke
-      ctx.lineCap='round'; ctx.lineJoin='round';
-      edges.forEach(function(e,i){
-        var a = pts[e[0]], b = pts[e[1]];
-        var lg = ctx.createLinearGradient(a.x,a.y,b.x,b.y);
-        lg.addColorStop(0,'rgba(110,231,255,'+(0.45+0.35*tw)+')');
-        lg.addColorStop(1,'rgba(167,139,250,'+(0.35+0.25*tw)+')');
-        ctx.strokeStyle = lg;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-      });
+        pts.forEach(function(p,idx){
+          var r = 1.3 + (idx%3?0.0:0.6)*tw;
+          ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(110,231,255,0.6)';
+          ctx.fillStyle = 'rgba(255,255,255,0.85)';
+          ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill();
+        });
 
-      // draw stars
-      pts.forEach(function(p,idx){
-        var r = 1.3 + (idx%3?0.0:0.6)*tw;
-        ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(110,231,255,0.6)';
-        ctx.fillStyle = 'rgba(255,255,255,'+(0.85)+')';
-        ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill();
-      });
-
+        requestAnimationFrame(draw);
+      }
       requestAnimationFrame(draw);
-    }
-    requestAnimationFrame(draw);
 
-    // Stop when splash is hidden
-    var splash = document.getElementById('splash');
-    var obs = new MutationObserver(function(){
-      if(splash.classList.contains('hide')) { running=false; obs.disconnect(); }
-    });
-    obs.observe(splash, {attributes:true, attributeFilter:['class']});
+      var splash = document.getElementById('splash');
+      var obs = new MutationObserver(function(){
+        if(splash.classList.contains('hide')) { running=false; obs.disconnect(); }
+      });
+      obs.observe(splash, {attributes:true, attributeFilter:['class']});
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', run);
+    } else { run(); }
   })();
 
   // -----------------------------------------------------
@@ -260,7 +249,7 @@
   // -----------------------------------------------------
   var AudioSys=(function(){
     var ctx=null, unlocked=false, gainMain=null;
-    var tickAcc=0, tickAccMs=0, tickLastHz=0, lastCoinTime=0;
+    var tickAcc=0, tickAccMs=0, lastCoinTime=0;
 
     function ensure(){
       if(ctx) return ctx;
@@ -333,16 +322,14 @@
       hz = Math.max(6, Math.min(18, hz||10));
       var c = ensure();
       if(c && unlocked){
-        tickAcc += dt; var period = 1/hz;
+        var period = 1/hz; tickAcc += dt;
         while(tickAcc >= period){ tickAcc -= period; playTick(); }
-        tickLastHz = hz;
       } else {
-        tickAccMs += dt*1000; var periodMs = 1000/hz;
+        var periodMs = 1000/hz; tickAccMs += dt*1000;
         while(tickAccMs >= periodMs){ tickAccMs -= periodMs; playTick(); }
-        tickLastHz = hz;
       }
     }
-    function resetTicker(){ tickAcc=0; tickAccMs=0; tickLastHz=0; }
+    function resetTicker(){ tickAcc=0; tickAccMs=0; }
     function playCoin(){
       var c=ensure();
       if(c && unlocked){
@@ -360,12 +347,10 @@
   })();
 
   // -----------------------------------------------------
-  // Config & symbols
+  // Assets (icons) + helpers
   // -----------------------------------------------------
-  var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
-    spinBaseDuration:2.0, spinStagger:0.45, cyclesBase:6, cyclesStep:2 };
   var REEL_DIR=[-1,+1,-1];
-  var FRAME_RADIUS=28, FRAME_GAP_FRAC=0.12, BUTTON_OFFSET_FRAC=0.22, NAV_HEIGHT_FRAC=0.58;
+  var FRAME_RADIUS=28, FRAME_GAP_FRAC=0.12, NAV_HEIGHT_FRAC=0.58;
   var SYMBOL_FILL=1.0, SYMBOL_MARGIN=0.04; var AUTO_TRIM_ALPHA=8, AUTO_TRIM_PAD_MIN=4, AUTO_TRIM_RATIO=0.10, USE_TRIM=true;
 
   var ICON_URLS=[
@@ -376,9 +361,6 @@
   var icons={ imgs:Array(12).fill(null), rects:Array(12).fill(null), ready:false, error:false };
   var iconCache={ cell:0, inner:0, canvases:Array(12).fill(null) };
 
-  // -----------------------------------------------------
-  // Preloader (images + fonts) w/ progress → Splash fade
-  // -----------------------------------------------------
   function preloadIconsWithProgress(urls, onProgress, onDone){
     var total = urls.length;
     var loaded = 0, failed = false;
@@ -431,7 +413,7 @@
   }
 
   // -----------------------------------------------------
-  // Visual helpers (unchanged core aesthetics)
+  // Visual helpers
   // -----------------------------------------------------
   function roundRectPath(ctx,x,y,w,h,r){ var rr=Math.max(0,Math.min(r,Math.min(w,h)/2)); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
   function drawDividerLine(ctx,x,topY,rows,cell,t){ ctx.save(); ctx.lineWidth=3; ctx.strokeStyle=lavaGradient(ctx,x-20,topY,40,rows*cell,t); ctx.shadowBlur=8; ctx.shadowColor='rgba(255,120,30,0.6)'; ctx.beginPath(); ctx.moveTo(x,topY); ctx.lineTo(x,topY+rows*cell); ctx.stroke(); ctx.restore(); }
@@ -441,9 +423,15 @@
   function lavaGradient(ctx,x,y,w,h,t){ var g=ctx.createLinearGradient(x,y+h*Math.sin(t*0.6)*0.1,x+w,y+h*(1+Math.sin(t*0.5)*0.1)); g.addColorStop(0,'#3a0d10'); g.addColorStop(0.25,'#7a1a10'); g.addColorStop(0.45,'#c32c10'); g.addColorStop(0.65,'#ff5a0a'); g.addColorStop(0.85,'#ffd066'); g.addColorStop(1,'#ff5a0a'); return g; }
   function drawLavaFrame(ctx,x,y,w,h,r,t){ var rr=Math.max(0,Math.min(r,Math.min(w,h)/2)); ctx.save(); ctx.translate(0.5,0.5); ctx.lineWidth=12; ctx.shadowBlur=22; ctx.shadowColor='rgba(255,100,20,0.85)'; ctx.strokeStyle=lavaGradient(ctx,x,y,w,h,t); roundRectPath(ctx,x+3,y+3,w-6,h-6,rr-3); ctx.stroke(); ctx.lineWidth=3; ctx.shadowBlur=10; ctx.strokeStyle='rgba(255,220,120,0.8)'; roundRectPath(ctx,x+8,y+8,w-16,h-16,rr-8); ctx.stroke(); ctx.restore(); }
   function drawLavaButton(ctx,cx,cy,R,t,pressed){ ctx.save(); var g=ctx.createRadialGradient(cx,cy,R*0.2,cx,cy,R); var p=(Math.sin(t*1.6)*0.5+0.5)*0.25; if(pressed){ g.addColorStop(0,'#ffeebf'); g.addColorStop(0.25+p,'#ffb34a'); g.addColorStop(0.65,'#c42d1f'); g.addColorStop(1,'#4a1410'); } else { g.addColorStop(0,'#ffea9a'); g.addColorStop(0.25+p,'#ff962a'); g.addColorStop(0.65,'#a81d0f'); g.addColorStop(1,'#3a0d10'); } ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle=g; ctx.fill(); ctx.lineWidth=6; ctx.strokeStyle='rgba(255,140,30,0.95)'; ctx.shadowColor='rgba(255,120,30,0.9)'; ctx.shadowBlur=20; ctx.stroke(); ctx.beginPath(); ctx.arc(cx,cy,R*0.85,-Math.PI*0.15,Math.PI*0.35); ctx.lineWidth=8; ctx.strokeStyle='rgba(255,240,210,0.35)'; ctx.shadowBlur=0; ctx.stroke(); ctx.restore(); ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 36px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; var tl=ctx.createLinearGradient(cx-40,cy-20,cx+40,cy+20); tl.addColorStop(0,'#fff4e2'); tl.addColorStop(1,'#ffd18a'); ctx.fillStyle=tl; ctx.fillText('SPIN',cx,cy); ctx.restore(); }
+  function drawSymbol(ctx,sym,x,y,size){
+    if(sym==='JP'){ ctx.save(); ctx.fillStyle='#ff2b2b'; ctx.font='900 '+Math.floor(size*0.30)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('JP',x,y); ctx.restore(); return; }
+    var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
+    var off=iconCache.canvases[index]; if(!off) return; var dx=x-off.width*0.5, dy=y-off.height*0.5; try{ ctx.drawImage(off,dx,dy);}catch(_){ }
+  }
+  var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,'JP'];
 
   // -----------------------------------------------------
-  // Game logic (engine)
+  // SlotEngine (game logic)
   // -----------------------------------------------------
   function getPlayerName(){
     try{
@@ -457,12 +445,6 @@
     try{ var ls=localStorage.getItem('slot_player_name'); if(ls) return ls; }catch(_){}
     return 'Player';
   }
-  function drawSymbol(ctx,sym,x,y,size){
-    if(sym==='JP'){ ctx.save(); ctx.fillStyle='#ff2b2b'; ctx.font='900 '+Math.floor(size*0.30)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('JP',x,y); ctx.restore(); return; }
-    var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
-    var off=iconCache.canvases[index]; if(!off) return; var dx=x-off.width*0.5, dy=y-off.height*0.5; try{ ctx.drawImage(off,dx,dy);}catch(_){ }
-  }
-  var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,'JP'];
 
   function drawNavIcon(ctx, type, cx, cy, size, grad){
     var s=size; ctx.save(); ctx.strokeStyle=grad; ctx.lineWidth=Math.max(2,Math.round(s*0.10)); ctx.lineJoin='round'; ctx.lineCap='round';
@@ -531,9 +513,6 @@
   function imod(n,m){return ((n%m)+m)%m;}
   function easeOutBounce(u){ var n1=7.5625, d1=2.75; if(u<1/d1){ return n1*u*u; } else if(u<2/d1){ u-=1.5/d1; return n1*u*u+0.75; } else if(u<2.5/d1){ u-=2.25/d1; return n1*u*u+0.9375; } else { u-=2.625/d1; return n1*u*u+0.984375; } }
 
-  // -----------------------------------------------------
-  // SlotEngine
-  // -----------------------------------------------------
   function SlotEngine(root){
     this.canvas=document.createElement('canvas'); this.ctx=this.canvas.getContext('2d'); root.appendChild(this.canvas);
     this.W=CONFIG.width; this.H=CONFIG.height; this.balance=CONFIG.startBalance; this.balanceVis=this.balance; this.bet=Math.max(1,Math.floor(CONFIG.bet||1));
@@ -613,6 +592,8 @@
     this.canvas.style.width=Math.floor(CONFIG.width*scale)+'px';
     this.canvas.style.height=Math.floor(CONFIG.height*scale)+'px';
     this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    // keep splash perfectly matched to canvas size
+    if (typeof syncSplashToCanvas === 'function') syncSplashToCanvas();
   };
   SlotEngine.prototype._computeLayout=function(){
     var cell=CONFIG.symbolSize, rows=CONFIG.rows, reelsN=CONFIG.reelCount;
@@ -701,7 +682,7 @@
     }
     if(anySpinning){
       var minHz=6, maxHz=18;
-      var norm = (maxV0>0)? (maxV / maxV0) : 0;      // 1.0 at start, →0 when stopping
+      var norm = (maxV0>0)? (maxV / maxV0) : 0;
       var targetHz = minHz + norm*(maxHz-minHz);
       try{ AudioSys.tick(dt, targetHz); }catch(_){}
     }
@@ -872,9 +853,11 @@
       if(barFill) barFill.style.width = Math.max(0, Math.min(100, pct)) + '%';
       if(barText) barText.textContent = (Math.max(0, Math.min(100, pct))).toFixed(0) + '%';
       if(hint && msg) hint.textContent = msg;
+      // keep the splash size correct during load (before canvas exists)
+      syncSplashToCanvas();
     }
 
-    // 12 icons + fonts ready = 13 milestones
+    // milestones: 12 icons + 1 fonts = 13
     var TOTAL=13;
     var milestones=0;
     function bump(msg){
@@ -884,30 +867,31 @@
       return pct;
     }
 
-    // Start icon preloading
+    // Start preloading icons
     preloadIconsWithProgress(ICON_URLS, function(pct, msg){
-      // Map icon-only percent into global TOTAL (keep below 100)
-      var mapped = Math.min(99, Math.floor((pct/100) * (12/TOTAL) * 100));
+      // map icon-only progress into global total (~0..92%)
+      var mapped = Math.min(92, Math.floor((pct/100) * (12/TOTAL) * 100));
       setProgress(mapped, msg||'Loading icons');
     }, function(){
-      // mark 12 icons as done
       milestones = 12;
       setProgress(Math.floor((milestones/TOTAL)*100), 'Icons ready');
-      // Wait fonts
+
       (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function(){
         var p = bump('Fonts ready');
+        // create engine after short delay, hide splash after canvas has styled size
         setTimeout(function(){
-          if(splash){ splash.classList.add('hide'); }
-          setTimeout(function(){
-            try{
-              var root=document.getElementById('game');
-              window.$slot=new SlotEngine(root);
-              selfTest(window.$slot);
-            }catch(e){
-              var el=document.getElementById('errorBanner'); el.textContent='Bootstrap failed: '+(e.message||e); el.style.display='block';
-            }
-          }, 180);
-        }, 220);
+          try{
+            var root=document.getElementById('game');
+            window.$slot=new SlotEngine(root);
+            // ensure splash matches the now-mounted canvas
+            setTimeout(syncSplashToCanvas, 0);
+            selfTest(window.$slot);
+          }catch(e){
+            var el=document.getElementById('errorBanner'); el.textContent='Bootstrap failed: '+(e.message||e); el.style.display='block';
+          }
+          // fade out splash after sizes are synced
+          setTimeout(function(){ if(splash){ splash.classList.add('hide'); } }, 180);
+        }, 200);
       });
     });
   });
