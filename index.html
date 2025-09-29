@@ -37,6 +37,11 @@
     <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/explosion-1.mp3" type="audio/mpeg" />
     <source src="https://actions.google.com/sounds/v1/explosions/explosion.ogg" type="audio/ogg" />
   </audio>
+  <!-- NEW: coin clink fallback -->
+  <audio id="coinSound" preload="auto" playsinline muted>
+    <source src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" type="audio/ogg" />
+    <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/coin-1.mp3" type="audio/mpeg" />
+  </audio>
 
 <script>
 (function(){
@@ -51,11 +56,13 @@
   window.addEventListener('unhandledrejection',function(e){ var r=e && e.reason; show('Unhandled: '+(r && (r.message||r))); });
 
   // -----------------------------------------------------
-  // Cross‑browser audio (WebAudio first; HTMLAudio fallback)
+  // Cross-browser audio (WebAudio first; HTMLAudio fallback)
   // -----------------------------------------------------
   var AudioSys=(function(){
     var ctx=null, unlocked=false;
     var gainMain=null;
+    var lastCoinTime = 0; // throttle coin ticks
+
     function ensure(){
       if(ctx) return ctx;
       var C=window.AudioContext||window.webkitAudioContext; if(!C) return null;
@@ -69,8 +76,8 @@
       var b=c.createBuffer(1, 1, 22050); var src=c.createBufferSource(); src.buffer=b; src.connect(gainMain); try{ src.start(0); }catch(_){ }
       unlocked=true; // we'll rely on gesture call site
       // Also unmute HTMLAudio as fallback
-      var a1=document.getElementById('spinSound'); var a2=document.getElementById('bangSound');
-      [a1,a2].forEach(function(a){ try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){ } });
+      var a1=document.getElementById('spinSound'); var a2=document.getElementById('bangSound'); var a3=document.getElementById('coinSound');
+      [a1,a2,a3].forEach(function(a){ try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){ } });
       return true;
     }
     function playSpin(){
@@ -127,7 +134,48 @@
       }
       var a=document.getElementById('spinSound'); if(a){ try{ a.muted=false; a.currentTime=0; a.play(); }catch(_){ } }
     }
-    return { ensure:ensure, unlock:unlock, playSpin:playSpin, playBang:playBang, playCountdown:playCountdown };
+    // NEW: coin clink
+    function playCoin(){
+      var c = ensure();
+      if(c && unlocked){
+        var now = c.currentTime;
+        if(now - lastCoinTime < 0.05) return; // ~20 clinks/sec max
+        lastCoinTime = now;
+
+        var o = c.createOscillator();
+        var hp = c.createBiquadFilter();
+        var g  = c.createGain();
+
+        o.type = 'square';
+        o.frequency.setValueAtTime(1500, now);
+        o.frequency.exponentialRampToValueAtTime(2200, now + 0.03);
+
+        hp.type = 'highpass';
+        hp.frequency.value = 900;
+
+        g.gain.setValueAtTime(0.0, now);
+        g.gain.linearRampToValueAtTime(0.45, now + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+        o.connect(hp); hp.connect(g); g.connect(gainMain);
+
+        o.start(now);
+        o.stop(now + 0.14);
+        return;
+      }
+
+      // HTMLAudio fallback
+      var a = document.getElementById('coinSound');
+      if(a){
+        try{
+          a.muted = false;
+          if(a.currentTime > 0.25) a.currentTime = 0;
+          a.play();
+        }catch(_){}
+      }
+    }
+
+    return { ensure:ensure, unlock:unlock, playSpin:playSpin, playBang:playBang, playCountdown:playCountdown, playCoin:playCoin };
   })();
 
   window.addEventListener('DOMContentLoaded',function(){
@@ -353,7 +401,7 @@
         if(audioArmed) return; audioArmed=true;
         try{ AudioSys.unlock(); }catch(_){ }
         // also try to poke the HTMLAudio (Firefox/Android)
-        ['spinSound','bangSound'].forEach(function(id){
+        ['spinSound','bangSound','coinSound'].forEach(function(id){
           var a=document.getElementById(id);
           try{
             if(a){
@@ -413,7 +461,7 @@
         var r=6 + Math.random()*4;
         var cx=this.transfer.srcX + (Math.random()*2-1)*80; // control point x
         var cy=this.transfer.srcY - 120 - Math.random()*120; // arc upwards
-        this.transfer.coins.push({delay:delay,r:r,cx:cx,cy:cy});
+        this.transfer.coins.push({delay:delay,r:r,cx:cx,cy:cy,sfx:false}); // sfx flag
       }
     };
 
@@ -514,12 +562,17 @@
           // amount text with decreasing value during transfer
           var prog = (this.transfer&&this.transfer.active)? (this.transfer.p||0) : 0; var shown = Math.round(this.winAmount * (1 - prog));
           var jitter=(this._drop.hit && this._drop.boom>0)?(Math.sin(this.time*80)*3):0; ctx.save(); var moneyGrad=ctx.createLinearGradient(centerX-60,y-20,centerX+60,y+20); moneyGrad.addColorStop(0,'#ffd066'); moneyGrad.addColorStop(1,'#ff5a0a'); ctx.fillStyle=moneyGrad; ctx.textAlign='center'; ctx.textBaseline='middle'; var fontPx=Math.max(26,Math.round(cell*0.40)); var scale=(this._drop.hit && this._drop.boom>0)? 1 + Math.max(0,this._drop.boom)*0.4 : 1; ctx.font='900 '+Math.round(fontPx*scale)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.shadowBlur=16; ctx.shadowColor='rgba(255,120,30,0.75)'; ctx.fillText((shown>0?'+$'+shown:''), centerX + jitter, y); ctx.restore(); if(this._drop.hit && this._drop.boom>0){ var k=1 - this._drop.boom / 0.6; var rr=rhv*(0.25 + k*0.55); ctx.save(); ctx.strokeStyle='rgba(255,208,102,'+(1-k)+')'; ctx.lineWidth=3 + 4*(1-k); ctx.beginPath(); ctx.arc(centerX, endY, rr, 0, Math.PI*2); ctx.stroke(); ctx.restore(); }
-          // coin transfer visuals
+          // coin transfer visuals + SFX
           if(this.transfer && this.transfer.active){
             var p=this.transfer.p; var tgtX=this.transfer.tgtX, tgtY=this.transfer.tgtY; var srcX=this.transfer.srcX, srcY=this.transfer.srcY;
             for(var ci=0; ci<this.transfer.coins.length; ci++){
               var C=this.transfer.coins[ci]; var tt=Math.min(1, Math.max(0, (p - C.delay) / (1 - C.delay)));
-              if(tt<=0) continue; var q=tt*tt*(3-2*tt); // smoothstep
+              if(tt>0 && !C.sfx){
+                if(Math.random() < 0.7){ try{ AudioSys.playCoin(); }catch(_){ } }
+                C.sfx = true;
+              }
+              if(tt<=0) continue;
+              var q=tt*tt*(3-2*tt); // smoothstep
               var bx=(1-q)*(1-q)*srcX + 2*(1-q)*q*C.cx + q*q*tgtX;
               var by=(1-q)*(1-q)*srcY + 2*(1-q)*q*C.cy + q*q*tgtY;
               drawCoin(ctx, bx, by, C.r);
