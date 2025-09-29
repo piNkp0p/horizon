@@ -42,10 +42,6 @@
     <source src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" type="audio/ogg" />
     <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/coin-1.mp3" type="audio/mpeg" />
   </audio>
-  <!-- spin loop fallback (subtle whoosh loop) -->
-  <audio id="spinLoopSound" preload="auto" playsinline loop muted>
-    <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/slot_whoosh_loop.mp3" type="audio/mpeg" />
-  </audio>
 
 <script>
 (function(){
@@ -67,8 +63,8 @@
     var gainMain=null;
     var lastCoinTime = 0; // throttle coin ticks
 
-    // spin loop state
-    var spinLoop = { g:null, whoosh:null, lfo:null, tickInt:null, usingFallback:false };
+    // spin tick-only state
+    var spinLoop = { g:null, tickInt:null, usingFallback:false };
 
     function ensure(){
       if(ctx) return ctx;
@@ -79,15 +75,14 @@
     function unlock(){
       var c=ensure(); if(!c) return false;
       if(c.state==='suspended'){ c.resume().catch(function(){}); }
-      // Play a tiny silent buffer to satisfy iOS/Firefox gesture requirement
+      // Play a tiny silent buffer to satisfy gesture requirement
       var b=c.createBuffer(1, 1, 22050); var src=c.createBufferSource(); src.buffer=b; src.connect(gainMain); try{ src.start(0); }catch(_){ }
       unlocked=true;
       // Also unmute HTMLAudio as fallback
       var a1=document.getElementById('spinSound');
       var a2=document.getElementById('bangSound');
       var a3=document.getElementById('coinSound');
-      var a4=document.getElementById('spinLoopSound');
-      [a1,a2,a3,a4].forEach(function(a){ try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){ } });
+      [a1,a2,a3].forEach(function(a){ try{ if(a){ a.muted=false; a.currentTime=0; } }catch(_){ } });
       return true;
     }
 
@@ -188,75 +183,55 @@
       }
     }
 
-    // --- Spin loop (whoosh + soft ticking), with HTMLAudio fallback ---
+    // --- Spin loop: ticking only (no whoosh) + HTMLAudio fallback beeps ---
     function startSpinLoop(){
       var c=ensure();
-      // If WebAudio unavailable or not yet unlocked, use HTMLAudio fallback
+      // Fallback (no WebAudio / not unlocked): beep using spinSound
       if(!(c && unlocked)){
-        var af=document.getElementById('spinLoopSound');
-        if(af){ try{ af.muted=false; af.currentTime=0; af.play(); spinLoop.usingFallback=true; }catch(_){ } }
+        if(spinLoop.tickInt) return;
+        var a=document.getElementById('spinSound');
+        if(!a) return;
+        spinLoop.usingFallback = true;
+        spinLoop.tickInt = setInterval(function(){
+          try{ a.currentTime = 0; a.play(); }catch(_){}
+        }, 120);
         return;
       }
       if(spinLoop.g) return; // already running
-
-      var g=c.createGain(); g.gain.value=0.0; g.connect(gainMain);
+      var g=c.createGain(); g.gain.value=1.0; g.connect(gainMain);
       spinLoop.g=g;
-
-      // whoosh = bandpassed noise with LFO amplitude
-      var len=c.sampleRate*1.0, buf=c.createBuffer(1, len, c.sampleRate), data=buf.getChannelData(0);
-      for(var i=0;i<len;i++){ data[i]=(Math.random()*2-1); }
-      var src=c.createBufferSource(); src.buffer=buf; src.loop=true;
-
-      var bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=700; bp.Q.value=0.9;
-
-      var lfo=c.createOscillator(); lfo.frequency.value=1.0;
-      var lfoGain=c.createGain(); lfoGain.gain.value=0.14;
-
-      var whooshGain=c.createGain(); whooshGain.gain.value=0.28;
-
-      src.connect(bp); bp.connect(whooshGain); whooshGain.connect(g);
-      lfo.connect(lfoGain); lfoGain.connect(whooshGain.gain);
-
-      var now=c.currentTime;
-      g.gain.linearRampToValueAtTime(0.6, now+0.12); // fade-in
-      src.start(now); lfo.start(now);
-
-      spinLoop.whoosh=src; spinLoop.lfo=lfo;
 
       // soft ticking every ~120ms
       spinLoop.tickInt=setInterval(function(){
+        var now=c.currentTime;
         var o=c.createOscillator(), eg=c.createGain(), hp=c.createBiquadFilter();
-        o.type='square'; o.frequency.setValueAtTime(1200, c.currentTime);
+        o.type='square'; o.frequency.setValueAtTime(1200, now);
         hp.type='highpass'; hp.frequency.value=800;
-        eg.gain.setValueAtTime(0, c.currentTime);
-        eg.gain.linearRampToValueAtTime(0.22, c.currentTime+0.005);
-        eg.gain.exponentialRampToValueAtTime(0.0001, c.currentTime+0.07);
+        eg.gain.setValueAtTime(0, now);
+        eg.gain.linearRampToValueAtTime(0.22, now+0.005);
+        eg.gain.exponentialRampToValueAtTime(0.0001, now+0.07);
         o.connect(hp); hp.connect(eg); eg.connect(g);
-        o.start(c.currentTime);
-        o.stop(c.currentTime+0.08);
+        o.start(now);
+        o.stop(now+0.08);
       }, 120);
     }
 
     function stopSpinLoop(){
       // stop fallback if used
       if(spinLoop.usingFallback){
-        var af=document.getElementById('spinLoopSound');
-        if(af){ try{ af.pause(); }catch(_){ } }
+        if(spinLoop.tickInt){ clearInterval(spinLoop.tickInt); spinLoop.tickInt=null; }
         spinLoop.usingFallback=false;
       }
-
-      var c=ensure(); if(!c) return;
+      var c=ensure(); // ok if null
       if(spinLoop.tickInt){ clearInterval(spinLoop.tickInt); spinLoop.tickInt=null; }
-      if(spinLoop.whoosh){ try{ spinLoop.whoosh.stop(); }catch(_){ } try{ spinLoop.whoosh.disconnect(); }catch(_){ } spinLoop.whoosh=null; }
-      if(spinLoop.lfo){ try{ spinLoop.lfo.stop(); }catch(_){ } try{ spinLoop.lfo.disconnect(); }catch(_){ } spinLoop.lfo=null; }
       if(spinLoop.g){
-        var now=c.currentTime; // short fade-out
         try{
-          spinLoop.g.gain.cancelScheduledValues(now);
-          spinLoop.g.gain.setValueAtTime(spinLoop.g.gain.value, now);
-          spinLoop.g.gain.linearRampToValueAtTime(0.0001, now+0.12);
+          // tiny fade-out just in case a tick is in-flight
+          var now=c?c.currentTime:0;
+          spinLoop.g.gain.setValueAtTime(spinLoop.g.gain.value, now||0);
+          if(c) spinLoop.g.gain.linearRampToValueAtTime(0.0001, now+0.08);
         }catch(_){}
-        setTimeout(function(){ try{ spinLoop.g.disconnect(); }catch(_){ } spinLoop.g=null; }, 140);
+        setTimeout(function(){ try{ spinLoop.g.disconnect(); }catch(_){ } spinLoop.g=null; }, 90);
       }
     }
 
@@ -280,7 +255,7 @@
     // Config & constants
     // ---------------------------------------------------
     var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
-      spinBaseDuration: 2.6, spinStagger: 0.45, cyclesBase: 12, cyclesStep: 3 };
+      spinBaseDuration:2.0, spinStagger:0.45, cyclesBase:6, cyclesStep:2 };
     var REEL_DIR=[-1,+1,-1];
     var FRAME_RADIUS=28;
     var FRAME_GAP_FRAC=0.12;
@@ -495,7 +470,7 @@
         if(audioArmed) return; audioArmed=true;
         try{ AudioSys.unlock(); }catch(_){ }
         // also try to poke the HTMLAudio (Firefox/Android)
-        ['spinSound','bangSound','coinSound','spinLoopSound'].forEach(function(id){
+        ['spinSound','bangSound','coinSound'].forEach(function(id){
           var a=document.getElementById(id);
           try{
             if(a){
@@ -592,7 +567,7 @@
       }
 
       if(this.winState==='idle' && this._allStopped()){
-        // stop spin loop as soon as reels finish (win or no win)
+        // stop spin ticking as soon as reels finish (win or no win)
         try{ AudioSys.stopSpinLoop(); }catch(_){}
         this._checkForWin();
       }
@@ -663,7 +638,22 @@
           if(!this._drop.hit){ ctx.save(); var trail=ctx.createLinearGradient(centerX, 0, centerX, y); trail.addColorStop(0,'rgba(255,255,255,0.0)'); trail.addColorStop(1,'rgba(255,208,102,0.9)'); ctx.strokeStyle=trail; ctx.lineWidth=2; ctx.shadowBlur=12; ctx.shadowColor='rgba(255,208,102,0.7)'; ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, y-4); ctx.stroke(); ctx.restore(); }
           if(this._drop.hit && this.transfer && !this.transfer.active && !this.transfer.srcSet){ this.transfer.srcX=centerX; this.transfer.srcY=endY; this.transfer.srcSet=true; }
           var prog = (this.transfer&&this.transfer.active)? (this.transfer.p||0) : 0; var shown = Math.round(this.winAmount * (1 - prog));
-          var jitter=(this._drop.hit && this._drop.boom>0)?(Math.sin(this.time*80)*3):0; ctx.save(); var moneyGrad=ctx.createLinearGradient(centerX-60,y-20,centerX+60,y+20); moneyGrad.addColorStop(0,'#ffd066'); moneyGrad.addColorStop(1,'#ff5a0a'); ctx.fillStyle=moneyGrad; ctx.textAlign='center'; ctx.textBaseline='middle'; var fontPx=Math.max(26,Math.round(cell*0.40)); var scale=(this._drop.hit && this._drop.boom>0)? 1 + Math.max(0,this._drop.boom)*0.4 : 1; ctx.font='900 '+Math.round(fontPx*scale)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.shadowBlur=16; ctx.shadowColor='rgba(255,120,30,0.75)'; ctx.fillText((shown>0?'+$'+shown:''), centerX + jitter, y); ctx.restore(); if(this._drop.hit && this._drop.boom>0){ var k=1 - this._drop.boom / 0.6; var rr=rhv*(0.25 + k*0.55); ctx.save(); ctx.strokeStyle='rgba(255,208,102,'+(1-k)+')'; ctx.lineWidth=3 + 4*(1-k); ctx.beginPath(); ctx.arc(centerX, endY, rr, 0, Math.PI*2); ctx.stroke(); ctx.restore(); }
+          var jitter=(this._drop.hit && this._drop.boom>0)?(Math.sin(this.time*80)*3):0;
+          ctx.save();
+          // plain yellow amount text (no gradient)
+          ctx.fillStyle = '#ffff00';
+          ctx.textAlign='center'; ctx.textBaseline='middle';
+          var fontPx=Math.max(26,Math.round(cell*0.40)); var scale=(this._drop.hit && this._drop.boom>0)? 1 + Math.max(0,this._drop.boom)*0.4 : 1;
+          ctx.font='900 '+Math.round(fontPx*scale)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+          ctx.shadowBlur=16; ctx.shadowColor='rgba(255,240,0,0.75)';
+          ctx.fillText((shown>0?'+$'+shown:''), centerX + jitter, y);
+          ctx.restore();
+
+          if(this._drop.hit && this._drop.boom>0){
+            var k=1 - this._drop.boom / 0.6; var rr=rhv*(0.25 + k*0.55);
+            ctx.save(); ctx.strokeStyle='rgba(255,208,102,'+(1-k)+')'; ctx.lineWidth=3 + 4*(1-k);
+            ctx.beginPath(); ctx.arc(centerX, endY, rr, 0, Math.PI*2); ctx.stroke(); ctx.restore();
+          }
           // coin transfer visuals + SFX
           if(this.transfer && this.transfer.active){
             var p=this.transfer.p; var tgtX=this.transfer.tgtX, tgtY=this.transfer.tgtY; var srcX=this.transfer.srcX, srcY=this.transfer.srcY;
