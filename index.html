@@ -29,8 +29,12 @@
     }
     #splash.hide { opacity: 0; visibility: hidden; }
 
+    /* Responsive wrap: scales itself to always fit inside splash */
     .splash-wrap {
-      width: min(560px, 86vw);
+      width: min(520px, calc(100% - 24px));
+      max-height: calc(100% - 24px);
+      box-sizing: border-box;
+
       padding: 28px 24px;
       border-radius: 24px;
       background: rgba(8,12,30,.55);
@@ -41,6 +45,8 @@
         0 0 46px rgba(110,231,255,.18);
       backdrop-filter: blur(6px);
       display: grid; gap: 14px; justify-items: center;
+
+      will-change: transform;
     }
     .brand { display: grid; gap: 12px; justify-items: center; margin-bottom: 4px; }
     .brand-badge {
@@ -142,10 +148,24 @@
   window.addEventListener('unhandledrejection',function(e){ var r=e && e.reason; show('Unhandled: '+(r && (r.message||r))); });
 
   // -----------------------------------------------------
-  // Splash ↔ Canvas size sync
+  // Splash ↔ Canvas size sync + content fit
   // -----------------------------------------------------
   var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
     spinBaseDuration:2.0, spinStagger:0.45, cyclesBase:6, cyclesStep:2 };
+
+  function fitSplashContent(){
+    var splash = document.getElementById('splash'); if(!splash) return;
+    var wrap = splash.querySelector('.splash-wrap'); if(!wrap) return;
+
+    wrap.style.transform = 'none'; // reset to measure
+
+    var sw = splash.clientWidth, sh = splash.clientHeight;
+    var w = wrap.offsetWidth,  h = wrap.offsetHeight;
+
+    var scale = Math.min(1, (sw - 12) / Math.max(1,w), (sh - 12) / Math.max(1,h));
+    wrap.style.transformOrigin = 'center';
+    wrap.style.transform = 'scale(' + scale + ')';
+  }
 
   function syncSplashToCanvas(){
     var splash = document.getElementById('splash');
@@ -160,6 +180,7 @@
       var scale = Math.min(vw/CONFIG.width, vh/CONFIG.height);
       splash.style.width  = Math.floor(CONFIG.width * scale) + 'px';
       splash.style.height = Math.floor(CONFIG.height * scale) + 'px';
+      fitSplashContent();
       return;
     }
     // match the rendered CSS size of the canvas (not its internal pixel buffer)
@@ -168,6 +189,7 @@
     var csh = parseFloat(cs.height);
     splash.style.width  = Math.round(csw) + 'px';
     splash.style.height = Math.round(csh) + 'px';
+    fitSplashContent();
   }
 
   // Keep splash size in sync with canvas scaling and viewport changes
@@ -426,7 +448,7 @@
   function drawSymbol(ctx,sym,x,y,size){
     if(sym==='JP'){ ctx.save(); ctx.fillStyle='#ff2b2b'; ctx.font='900 '+Math.floor(size*0.30)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('JP',x,y); ctx.restore(); return; }
     var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
-    var off=iconCache.canvases[index]; if(!off) return; var dx=x-off.width*0.5, dy=y-off.height*0.5; try{ ctx.drawImage(off,dx,dy);}catch(_){ }
+    var off=iconCache.canvases[index]; if(!off) return; var dx=x-off.width*0.5, dy=y-off.height*0.5; try{ ctx.drawImage(off,dx,dy);}catch(_){}
   }
   var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,'JP'];
 
