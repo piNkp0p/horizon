@@ -7,7 +7,7 @@
   <style>
     html, body { height: 100%; margin: 0; background: #020616; overflow: hidden; }
     #game { position: fixed; inset: 0; display: grid; place-items: center; }
-    canvas { display: block; width: 100%; height: 100%; background: transparent; }
+    canvas { display: block; width: 100%; height: 100%; background: transparent;  z-index:1; position:relative;  position:relative; z-index:1; }
     .error-banner { position: fixed; top: 0; left: 0; right: 0; background: #3a0d10; color: #ffd2d2; padding: 10px 14px; font-weight: 700; display: none; z-index: 40; white-space: pre-wrap; }
     body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     audio { display: none !important; }
@@ -81,10 +81,18 @@
     }
     @keyframes twinkle { 0%,100% { opacity: .8; } 50% { opacity: .35; } }
   </style>
+
+<style>
+/* Local background image on the game container */
+#game {}
+</style>
+
+<link rel="preload" as="image" href="./backgroundstory.png" fetchpriority="high">
 </head>
 <body>
-    <video id="videoBG" src="https://pinkp0p.github.io/horizon/backgroundstory.mp4" autoplay muted loop playsinline style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;"></video>
-<div id="game"></div>
+<img id="bgImageLocal" src="./backgroundstory.png" decoding="sync" loading="eager" style="position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:0;opacity:1;" alt="background">
+
+  <div id="game"></div>
 
   <!-- Hidden input for inline bet editing -->
   <input id="betInput" type="text" inputmode="numeric" pattern="[0-9]*"
@@ -356,7 +364,38 @@
     function playCoin(){
       var c=ensure();
       if(c && unlocked){
-        var now=c.currentTime; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
+        var now=c.current
+// Local background image preload+decode
+var bgDecoded = (function(){
+  return new Promise(function(resolve){
+    var img = new Image();
+    img.decoding = "sync";
+    img.loading = "eager";
+    img.onload = function(){
+      if (img.decode) { img.decode().catch(function(){}).then(resolve); } else { resolve(); }
+    };
+    img.onerror = function(){ resolve(); };
+    img.src = "./backgroundstory.png";
+  });
+})();
+
+
+// Splash progress counters (icons + fonts + background)
+var TOTAL = 14;
+var milestones = 0;
+function setProgress(p, msg){
+  try {
+    var f=document.getElementById('barFill'); if(f) f.style.width=p+'%';
+    var t=document.getElementById('barText'); if(t) t.textContent=p+'%';
+    var h=document.getElementById('splashHint'); if(h&&msg) h.textContent=msg;
+  } catch(e){}
+}
+function bump(msg){
+  milestones++;
+  setProgress(Math.floor((milestones/TOTAL)*100), msg || ('Loaded '+milestones+'/'+TOTAL));
+}
+
+Time; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
         var o=c.createOscillator(), hp=c.createBiquadFilter(), g=c.createGain();
         o.type='square'; o.frequency.setValueAtTime(1500, now); o.frequency.exponentialRampToValueAtTime(2200, now+0.03);
         hp.type='highpass'; hp.frequency.value=900;
@@ -444,7 +483,7 @@
   StarBG.prototype.update=function(dt){ this.t+=dt; for(var i=0;i<this.stars.length;i++){ var s=this.stars[i]; s.y+=s.v*dt; if(s.y>this.h){ s.y=-2; s.x=Math.random()*this.w; } } };
   StarBG.prototype.draw=function(ctx){ ctx.fillStyle='#050714'; ctx.fillRect(0,0,this.w,this.h); ctx.globalCompositeOperation='lighter'; for(var i=0;i<this.stars.length;i++){ var s=this.stars[i]; var twPhase=0.5+0.5*Math.sin(this.t*s.tw+s.ph); var a=s.baseA*(0.65+0.35*twPhase); var color='rgba('+s.rgb[0]+','+s.rgb[1]+','+s.rgb[2]+','+a.toFixed(3)+')'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r*(0.85+0.15*twPhase),0,Math.PI*2); ctx.fillStyle=color; ctx.shadowBlur=6+6*twPhase; ctx.shadowColor=color; ctx.fill(); } ctx.globalCompositeOperation='source-over'; };
   function lavaGradient(ctx,x,y,w,h,t){ var g=ctx.createLinearGradient(x,y+h*Math.sin(t*0.6)*0.1,x+w,y+h*(1+Math.sin(t*0.5)*0.1)); g.addColorStop(0,'#3a0d10'); g.addColorStop(0.25,'#7a1a10'); g.addColorStop(0.45,'#c32c10'); g.addColorStop(0.65,'#ff5a0a'); g.addColorStop(0.85,'#ffd066'); g.addColorStop(1,'#ff5a0a'); return g; }
-  function drawLavaFrame(ctx,x,y,w,h,r,t){ var rr=Math.max(0,Math.min(r,Math.min(w,h)/2)); ctx.save(); ctx.translate(0.5,0.5); ctx.lineWidth=12; ctx.shadowBlur=22; ctx.shadowColor='rgba(255,100,20,0.85)'; ctx.strokeStyle=lavaGradient(ctx,x,y,w,h,t); roundRectPath(ctx,x+3,y+3,w-6,h-6,rr-3); ctx.stroke(); ctx.lineWidth=3; ctx.shadowBlur=10; ctx.strokeStyle='rgba(255,220,120,0.8)'; roundRectPath(ctx,x+8,y+8,w-16,h-16,rr-8); ctx.stroke(); ctx.restore(); }
+  //function drawLavaFrame(ctx,x,y,w,h,r,t){ var rr=Math.max(0,Math.min(r,Math.min(w,h)/2)); ctx.save(); ctx.translate(0.5,0.5); ctx.lineWidth=12; ctx.shadowBlur=22; ctx.shadowColor='rgba(255,100,20,0.85)'; ctx.strokeStyle=lavaGradient(ctx,x,y,w,h,t); roundRectPath(ctx,x+3,y+3,w-6,h-6,rr-3); ctx.stroke(); ctx.lineWidth=3; ctx.shadowBlur=10; ctx.strokeStyle='rgba(255,220,120,0.8)'; roundRectPath(ctx,x+8,y+8,w-16,h-16,rr-8); ctx.stroke(); ctx.restore(); }
   function drawLavaButton(ctx,cx,cy,R,t,pressed){ ctx.save(); var g=ctx.createRadialGradient(cx,cy,R*0.2,cx,cy,R); var p=(Math.sin(t*1.6)*0.5+0.5)*0.25; if(pressed){ g.addColorStop(0,'#ffeebf'); g.addColorStop(0.25+p,'#ffb34a'); g.addColorStop(0.65,'#c42d1f'); g.addColorStop(1,'#4a1410'); } else { g.addColorStop(0,'#ffea9a'); g.addColorStop(0.25+p,'#ff962a'); g.addColorStop(0.65,'#a81d0f'); g.addColorStop(1,'#3a0d10'); } ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle=g; ctx.fill(); ctx.lineWidth=6; ctx.strokeStyle='rgba(255,140,30,0.95)'; ctx.shadowColor='rgba(255,120,30,0.9)'; ctx.shadowBlur=20; ctx.stroke(); ctx.beginPath(); ctx.arc(cx,cy,R*0.85,-Math.PI*0.15,Math.PI*0.35); ctx.lineWidth=8; ctx.strokeStyle='rgba(255,240,210,0.35)'; ctx.shadowBlur=0; ctx.stroke(); ctx.restore(); ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 36px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; var tl=ctx.createLinearGradient(cx-40,cy-20,cx+40,cy+20); tl.addColorStop(0,'#fff4e2'); tl.addColorStop(1,'#ffd18a'); ctx.fillStyle=tl; ctx.fillText('SPIN',cx,cy); ctx.restore(); }
   function drawSymbol(ctx,sym,x,y,size){
     if(sym==='JP'){ ctx.save(); ctx.fillStyle='#ff2b2b'; ctx.font='900 '+Math.floor(size*0.30)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('JP',x,y); ctx.restore(); return; }
@@ -920,5 +959,339 @@
   });
 })();
 </script>
+
+<script>
+(function(){
+  var rafId = 0;
+  function isHidden(el){
+    if(!el) return true;
+    var cs = getComputedStyle(el);
+    return cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0' || el.offsetParent === null;
+  }
+  function sync(){
+    var v = document.getElementById('bgImage');
+    var game = document.getElementById('game');
+    var splash = document.getElementById('splash');
+    var cvs = game ? game.querySelector('canvas') : null;
+    if(!v || !cvs){
+      rafId = requestAnimationFrame(sync);
+      return;
+    }
+    var r = cvs.getBoundingClientRect();
+    v.style.left = r.left + 'px';
+    v.style.top = r.top + 'px';
+    v.style.width = r.width + 'px';
+    v.style.height = r.height + 'px';
+    var shouldShow = isHidden(splash);
+    v.style.opacity = shouldShow ? '1' : '0';
+    rafId = requestAnimationFrame(sync);
+  }
+  window.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
+    window.visualViewport.addEventListener('scroll', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
+  }
+  sync();
+})();
+</script>
+
+
+<script>
+// SAFE OVERRIDE: keep engine intact; just neutralize the lava frame draw call.
+try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
+</script>
+
+
+<script>
+(function(){
+  var rafId = 0;
+  function isHidden(el){
+    if(!el) return true;
+    var cs = getComputedStyle(el);
+    return cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0' || el.offsetParent === null;
+  }
+  function sync(){
+    var img = document.getElementById('bgImage');
+    var game = document.getElementById('game');
+    var splash = document.getElementById('splash');
+    var cvs = game ? game.querySelector('canvas') : null;
+    if(!img || !cvs){
+      rafId = requestAnimationFrame(sync);
+      return;
+    }
+    var r = cvs.getBoundingClientRect();
+    // CONFIG pulled from engine defaults
+    var W = 720, H = 1280;
+    var rows = 4, reelsN = 3, cell = 180, reelSpacing = 16;
+    var FRAME_GAP_FRAC = 0.12;
+    var mcx = W/2, mcy = H*0.43;
+    var totalW = reelsN*cell + (reelsN-1)*reelSpacing;
+    var startX = mcx - totalW/2 + cell/2;
+    var topY = mcy - rows*cell/2;
+    var gapPx = Math.max(1, Math.round(cell * FRAME_GAP_FRAC));
+    var fx = startX - cell/2 - gapPx;
+    var fy = topY - gapPx;
+    var fw = totalW + gapPx*2;
+    var fh = rows*cell + gapPx*2;
+    var scaleX = r.width / W, scaleY = r.height / H;
+    img.style.left = (r.left + fx * scaleX) + 'px';
+    img.style.top  = (r.top  + fy * scaleY) + 'px';
+    img.style.width  = (fw * scaleX) + 'px';
+    img.style.height = (fh * scaleY) + 'px';
+    img.style.objectFit = 'cover';
+    img.style.opacity = isHidden(splash) ? '1' : '0';
+    rafId = requestAnimationFrame(sync);
+  }
+  window.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
+    window.visualViewport.addEventListener('scroll', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
+  }
+  sync();
+})();
+</script>
+
+
+<script>
+(function(){
+  function align(){
+    var img = document.getElementById('bgImageLocal');
+    var game = document.getElementById('game');
+    var cvs = game ? game.querySelector('canvas') : null;
+    if(!img || !cvs){
+      requestAnimationFrame(align);
+      return;
+    }
+    var r = cvs.getBoundingClientRect();
+    img.style.left   = r.left + 'px';
+    img.style.top    = r.top + 'px';
+    img.style.width  = r.width + 'px';
+    img.style.height = r.height + 'px';
+    requestAnimationFrame(align);
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', align);
+  } else {
+    align();
+  }
+})();
+</script>
+
+
+<script>
+(function(){
+  // === Manual adjustment knobs ===
+  // Change these four values to reposition/resize the background image.
+  // Positive OFFSET_X moves right; negative moves left.
+  // Positive OFFSET_Y moves down; negative moves up.
+  // SCALE_X/SCALE_Y scale the image relative to the game canvas size.
+  window.BG_ALIGN = {
+    OFFSET_X: 0,
+    OFFSET_Y: 0,
+    SCALE_X: 1.0,
+    SCALE_Y: 1.0
+  };
+
+  function align(){
+    var img = document.getElementById('bgImageLocal');
+    var root = document.getElementById('game');
+    var cvs  = root ? root.querySelector('canvas') : null;
+    if(!img || !cvs){
+      requestAnimationFrame(align);
+      return;
+    }
+    var r = cvs.getBoundingClientRect();
+    var sx = window.BG_ALIGN.SCALE_X || 1;
+    var sy = window.BG_ALIGN.SCALE_Y || 1;
+    var ox = window.BG_ALIGN.OFFSET_X || 0;
+    var oy = window.BG_ALIGN.OFFSET_Y || -50;
+
+    var w = r.width  * sx;
+    var h = r.height * sy;
+    var l = r.left + (r.width  - w)/2 + ox;
+    var t = r.top  + (r.height - h)/2 + oy;
+
+    img.style.left   = l + 'px';
+    img.style.top    = t + 'px';
+    img.style.width  = w + 'px';
+    img.style.height = h + 'px';
+
+    requestAnimationFrame(align);
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', align);
+  } else { align(); }
+})();
+</script>
+
+
+
+<!-- UI Overlay Neon Button (manual knobs + feature toggles) -->
+<script>
+(function(){
+  // ====== Manual knobs (edit these to position/scale) ======
+  window.SPIN_OVERLAY = Object.assign({
+    ENABLED: true,        // set false to disable overlay
+    DIAM_FRAC: 0.26,      // base diameter as % of canvas width
+    SCALE: 1.32,          // fine-tune size
+    BOTTOM_FRAC: 0.06,    // distance from bottom as % of canvas height
+    OFFSET_X: 0,          // px shift right(+)/left(-)
+    OFFSET_Y: -30,          // px shift down(+)/up(-)
+    SHOW_FLARE: false,    // thin orange line accent (false hides it)
+    SHOW_HIGHLIGHT: true, // glossy arc
+    SHOW_PULSE: true,      // outer breathing glow
+	SHOW_INNER: false
+
+  }, (window.SPIN_OVERLAY||{}));
+
+  // ====== Overlay canvas setup ======
+  function ensureUICanvas(){
+    var ui = document.getElementById('uiCanvas');
+    if (ui) return ui;
+    ui = document.createElement('canvas');
+    ui.id = 'uiCanvas';
+    ui.style.position = 'fixed';
+    ui.style.left = '0';
+    ui.style.top  = '0';
+    ui.style.zIndex = '3';            // above game canvas
+    ui.style.pointerEvents = 'none';  // clicks pass through
+    document.body.appendChild(ui);
+    return ui;
+  }
+
+  function syncUICanvasToGame(ui){
+    var root = document.getElementById('game');
+    var cvs  = root ? root.querySelector('canvas') : null;
+    if (!cvs) return null;
+    var r = cvs.getBoundingClientRect();
+    ui.style.left   = r.left + 'px';
+    ui.style.top    = r.top  + 'px';
+    ui.style.width  = Math.round(r.width)  + 'px';
+    ui.style.height = Math.round(r.height) + 'px';
+    var dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    var w = Math.max(2, Math.round(r.width  * dpr));
+    var h = Math.max(2, Math.round(r.height * dpr));
+    if (ui.width !== w || ui.height !== h) { ui.width = w; ui.height = h; }
+    return { rect: r, dpr: dpr };
+  }
+
+  // ====== Neon renderer ======
+  function drawNeonSpinButton(ctx, cx, cy, R, t, pressed, knobs){
+    var k = pressed ? 0.94 : 1.00;
+    var R0 = R * k;
+    ctx.save();
+
+    // Core
+    var gCore = ctx.createRadialGradient(cx, cy, R0*0.12, cx, cy, R0);
+    gCore.addColorStop(0.00, '#3f33ff');
+    gCore.addColorStop(0.40, '#2b1e8a');
+    gCore.addColorStop(1.00, '#0b0a26');
+    ctx.beginPath(); ctx.arc(cx, cy, R0*0.94, 0, Math.PI*2);
+    ctx.fillStyle = gCore; ctx.fill();
+
+    // Outer neon ring
+    var gRing = ctx.createLinearGradient(cx - R0, cy - R0, cx + R0, cy + R0);
+    gRing.addColorStop(0.00, '#ff4fd8');
+    gRing.addColorStop(0.50, '#7a3bff');
+    gRing.addColorStop(1.00, '#35b6ff');
+    ctx.lineWidth   = Math.max(6, R0 * 0.11);
+    ctx.strokeStyle = gRing;
+    ctx.shadowBlur  = 28;
+    ctx.shadowColor = 'rgba(120, 80, 255, 0.85)';
+    ctx.beginPath(); ctx.arc(cx, cy, R0*0.88, 0, Math.PI*2); ctx.stroke();
+
+    // Inner thin rim
+    //var gInner = ctx.createLinearGradient(cx - R0, cy, cx + R0, cy);
+    //gInner.addColorStop(0.00, '#ffd4ff');
+    //gInner.addColorStop(1.00, '#9fd8ff');
+    //ctx.lineWidth   = Math.max(2, R0 * 0.035);
+    //ctx.strokeStyle = gInner;
+   // ctx.shadowBlur  = 8;
+    //ctx.shadowColor = 'rgba(255, 200, 255, 0.65)';
+    //ctx.beginPath(); ctx.arc(cx, cy, R0*0.70, 0, Math.PI*2); ctx.stroke();
+
+    // Glossy highlight arc (toggle)
+    if (knobs.SHOW_HIGHLIGHT !== true){
+      ctx.save();
+      ctx.lineCap = 'round'; ctx.shadowBlur = 0;
+      ctx.lineWidth = Math.max(4, R0 * 0.05);
+      ctx.strokeStyle = 'rgba(255, 240, 255, 0.45)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, R0*0.78, -Math.PI*0.18, Math.PI*0.34);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Subtle orange horizontal flare (toggle)
+    if (knobs.SHOW_FLARE){
+      var flareY = cy + R0 * 0.62;
+      var gFlare = ctx.createLinearGradient(cx - R0, flareY, cx + R0, flareY);
+      gFlare.addColorStop(0.00, 'rgba(255,120,30,0)');
+      gFlare.addColorStop(0.50, 'rgba(255,120,30,0.85)');
+      gFlare.addColorStop(1.00, 'rgba(255,120,30,0)');
+      ctx.strokeStyle = gFlare;
+      ctx.lineWidth   = Math.max(3, R0 * 0.035);
+      ctx.shadowBlur  = 18;
+      ctx.shadowColor = 'rgba(255,120,30,0.55)';
+      ctx.beginPath(); ctx.moveTo(cx - R0*0.88, flareY); ctx.lineTo(cx + R0*0.88, flareY); ctx.stroke();
+    }
+
+    // "SPIN" label
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var fontPx = Math.max(26, Math.round(R0 * 0.52));
+    ctx.font = '900 ' + fontPx + 'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    var gTxt = ctx.createLinearGradient(cx - R0*0.4, cy - R0*0.4, cx + R0*0.4, cy + R0*0.4);
+    gTxt.addColorStop(0.00, '#ffd6ff'); gTxt.addColorStop(1.00, '#ff7ae6');
+    ctx.fillStyle  = gTxt;
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = 'rgba(255,120,220,0.80)';
+    ctx.fillText('SPIN', cx, cy);
+
+    // Outer pulse (toggle)
+    if (knobs.SHOW_PULSE !== false){
+      var pulse = (Math.sin(t * 2.0) * 0.5 + 0.5) * 0.35;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.beginPath(); ctx.arc(cx, cy, R0*0.90, 0, Math.PI*2);
+      ctx.lineWidth = Math.max(2, R0 * 0.04);
+      ctx.strokeStyle = 'rgba(128, 96, 255,' + (0.25 + pulse*0.25).toFixed(3) + ')';
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // ====== Render loop using manual geometry ======
+  function loop(){
+    var knobs = window.SPIN_OVERLAY || {};
+    if (!knobs.ENABLED) { requestAnimationFrame(loop); return; }
+
+    var ui = ensureUICanvas();
+    var sync = syncUICanvasToGame(ui);
+    if (!sync) { requestAnimationFrame(loop); return; }
+
+    var rect = sync.rect, dpr = sync.dpr;
+    var ctx = ui.getContext('2d');
+    ctx.clearRect(0,0,ui.width,ui.height);
+
+    // Geometry from knobs
+    var diamCSS = rect.width * (knobs.DIAM_FRAC || 0.26) * (knobs.SCALE || 1);
+    var R = (diamCSS/2) * dpr;
+    var cx = (rect.width/2 + (knobs.OFFSET_X||0)) * dpr;
+    var bottomMarginCSS = rect.height * (knobs.BOTTOM_FRAC || 0.06);
+    var cy = (rect.height - bottomMarginCSS - diamCSS/2 + (knobs.OFFSET_Y||0)) * dpr;
+
+    var pressed = false;
+    try { if (window.$slot && typeof window.$slot.buttonPressed !== 'undefined') pressed = !!window.$slot.buttonPressed; } catch(e){}
+    var t = (performance.now() || 0)/1000;
+
+    drawNeonSpinButton(ctx, cx, cy, R, t, pressed, knobs);
+    requestAnimationFrame(loop);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loop);
+  else loop();
+})();
+</script>
+
 </body>
 </html>
