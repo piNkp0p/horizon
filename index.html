@@ -7,7 +7,7 @@
   <style>
     html, body { height: 100%; margin: 0; background: #020616; overflow: hidden; }
     #game { position: fixed; inset: 0; display: grid; place-items: center; }
-    canvas { display: block; width: 100%; height: 100%; background: #000; }
+    canvas { display: block; width: 100%; height: 100%; background: transparent; }
     .error-banner { position: fixed; top: 0; left: 0; right: 0; background: #3a0d10; color: #ffd2d2; padding: 10px 14px; font-weight: 700; display: none; z-index: 40; white-space: pre-wrap; }
     body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     audio { display: none !important; }
@@ -83,7 +83,8 @@
   </style>
 </head>
 <body>
-  <div id="game"></div>
+    <video id="videoBG" src="https://pinkp0p.github.io/horizon/backgroundstory.mp4" autoplay muted loop playsinline style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;"></video>
+<div id="game"></div>
 
   <!-- Hidden input for inline bet editing -->
   <input id="betInput" type="text" inputmode="numeric" pattern="[0-9]*"
@@ -539,7 +540,7 @@
     this.canvas=document.createElement('canvas'); this.ctx=this.canvas.getContext('2d'); root.appendChild(this.canvas);
     this.W=CONFIG.width; this.H=CONFIG.height; this.balance=CONFIG.startBalance; this.balanceVis=this.balance; this.bet=Math.max(1,Math.floor(CONFIG.bet||1));
     this.machineCenter={ x:this.W/2, y:this.H*0.43 };
-    this.bg=new StarBG(this.W,this.H);
+    this.bg = {update:function(){}, draw:function(){}};
     this.reels=[]; this.buttonPressed=false;
     this.betRect=this.betPlusRect=this.betMinusRect=null; this.editingBet=false; this.betDraft=String(this.bet); this._caretBlink=0;
     this.playerName=getPlayerName(); this.showFPS=false; this.fpsEMA=60; this.fpsRect={x:16,y:16,w:86,h:32};
