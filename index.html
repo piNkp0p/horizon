@@ -1,11 +1,10 @@
-<!DOCTYPE html>
-
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" name="viewport"/>
-<title>Horizon — Telegram Slot Machine</title>
-<style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Horizon — Telegram Slot Machine</title>
+  <style>
     html, body { height: 100%; margin: 0; background: #020616; overflow: hidden; }
     #game { position: fixed; inset: 0; display: grid; place-items: center; }
     canvas { display: block; width: 100%; height: 100%; background: transparent;  z-index:1; position:relative;  position:relative; z-index:1; }
@@ -81,72 +80,70 @@
       animation: twinkle 3.2s ease-in-out infinite;
     }
     @keyframes twinkle { 0%,100% { opacity: .8; } 50% { opacity: .35; } }
-  
-#balanceDisplay {
-  color: #FFD700 !important; /* gold color */
-  text-shadow: 0 0 6px rgba(255, 215, 0, 0.9), 0 0 12px rgba(255, 165, 0, 0.7);
-  z-index: 3 !important; /* ensure above balance.png */
-}
-</style>
+  </style>
+
 <style>
 /* Local background image on the game container */
 #game {}
 </style>
-<link rel="preload" as="video" href="./backgroundstory.mp4" type="video/mp4"/>
+
+<link rel="preload" as="image" href="./backgroundstory.png" fetchpriority="high">
 </head>
 <body>
-<img alt="background" decoding="sync" id="bgImageLocal" loading="eager" src="./backgroundstory.png" style="position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:0;opacity:1;"/>
-<div id="game" style="position:relative;;position:relative;">
-<video id="bgVideo" muted playsinline webkit-playsinline autoplay loop preload="auto"
-  class="hiddenUntilReady"
-  style="position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; z-index:0; pointer-events:none;">
-  <source src="./backgroundstory.mp4" type="video/mp4"/>
-</video>
-<img alt="Balance background" id="balanceBg" src="./balance.png" style="position:fixed;left:0;top:0;width:0;height:auto;pointer-events:none;z-index:0;opacity:1;"/></div>
-<!-- Hidden input for inline bet editing -->
-<input aria-label="Edit bet" id="betInput" inputmode="numeric" pattern="[0-9]*" style="position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;border:0;padding:0;background:transparent;color:transparent" type="text"/>
-<div class="error-banner" id="errorBanner"></div>
-<div class="error-banner" id="fallback" style="display:block;background:#0e1422;color:#cde7ff">
+<img id="bgImageLocal" src="./backgroundstory.png" decoding="sync" loading="eager" style="position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:0;opacity:1;" alt="background">
+
+  <div id="game"></div>
+
+  <!-- Hidden input for inline bet editing -->
+  <input id="betInput" type="text" inputmode="numeric" pattern="[0-9]*"
+         style="position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;border:0;padding:0;background:transparent;color:transparent"
+         aria-label="Edit bet" />
+
+  <div id="errorBanner" class="error-banner"></div>
+  <div id="fallback" class="error-banner" style="display:block;background:#0e1422;color:#cde7ff">
     If you see only this message on iPhone, the file is opening in the Files app preview which doesn’t run JavaScript.
     Tap the share icon → <b>Open in Safari</b>, or host this file on HTTPS and open that link.
   </div>
-<div class="sound-hint" id="soundHint" style="display:none">Tap anywhere to <b>enable sound</b> 🔊</div>
-<!-- HTMLAudio fallbacks (WebAudio is preferred) -->
-<audio id="spinSound" muted="" playsinline="" preload="auto">
-<source src="https://cdn.jsdelivr.net/gh/naptha/talkify/sounds/notification.mp3" type="audio/mpeg"/>
-<source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg"/>
-</audio>
-<audio id="bangSound" muted="" playsinline="" preload="auto">
-<source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/explosion-1.mp3" type="audio/mpeg"/>
-<source src="https://actions.google.com/sounds/v1/explosions/explosion.ogg" type="audio/ogg"/>
-</audio>
-<audio id="coinSound" muted="" playsinline="" preload="auto">
-<source src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" type="audio/ogg"/>
-<source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/coin-1.mp3" type="audio/mpeg"/>
-</audio>
-<!-- SPLASH / PRELOADER (exact game size; JS sets width/height) -->
-<div aria-live="polite" id="splash" role="status">
-<div class="dot-stars"></div>
-<div class="splash-wrap">
-<div class="brand">
-<div class="brand-badge">
-<!-- Animated constellation logo -->
-<canvas aria-hidden="true" height="76" id="constellation" width="76"></canvas>
-</div>
-<div aria-label="Game name" class="brand-title">HORIZON</div>
-<div class="brand-sub">Preparing constellations &amp; forging the lava frame…</div>
-</div>
-<div aria-label="Loading progress" class="bar">
-<div class="bar-fill" id="barFill"></div>
-<div class="bar-glow"></div>
-</div>
-<div class="bar-text" id="barText">0%</div>
-<div class="splash-foot">
-<span id="splashHint">Loading assets</span>
-<span>Telegram Mini App</span>
-</div>
-</div>
-</div>
+  <div id="soundHint" class="sound-hint" style="display:none">Tap anywhere to <b>enable sound</b> 🔊</div>
+
+  <!-- HTMLAudio fallbacks (WebAudio is preferred) -->
+  <audio id="spinSound" preload="auto" playsinline muted>
+    <source src="https://cdn.jsdelivr.net/gh/naptha/talkify/sounds/notification.mp3" type="audio/mpeg" />
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg" />
+  </audio>
+  <audio id="bangSound" preload="auto" playsinline muted>
+    <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/explosion-1.mp3" type="audio/mpeg" />
+    <source src="https://actions.google.com/sounds/v1/explosions/explosion.ogg" type="audio/ogg" />
+  </audio>
+  <audio id="coinSound" preload="auto" playsinline muted>
+    <source src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" type="audio/ogg" />
+    <source src="https://cdn.jsdelivr.net/gh/itsmikehere/sample-audio@main/coin-1.mp3" type="audio/mpeg" />
+  </audio>
+
+  <!-- SPLASH / PRELOADER (exact game size; JS sets width/height) -->
+  <div id="splash" role="status" aria-live="polite">
+    <div class="dot-stars"></div>
+    <div class="splash-wrap">
+      <div class="brand">
+        <div class="brand-badge">
+          <!-- Animated constellation logo -->
+          <canvas id="constellation" width="76" height="76" aria-hidden="true"></canvas>
+        </div>
+        <div class="brand-title" aria-label="Game name">HORIZON</div>
+        <div class="brand-sub">Preparing constellations &amp; forging the lava frame…</div>
+      </div>
+      <div class="bar" aria-label="Loading progress">
+        <div class="bar-fill" id="barFill"></div>
+        <div class="bar-glow"></div>
+      </div>
+      <div class="bar-text" id="barText">0%</div>
+      <div class="splash-foot">
+        <span id="splashHint">Loading assets</span>
+        <span>Telegram Mini App</span>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function(){
   'use strict';
@@ -415,7 +412,7 @@ Time; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
   // Assets (icons) + helpers
   // -----------------------------------------------------
   var REEL_DIR=[-1,+1,-1];
-  var FRAME_RADIUS=28, FRAME_GAP_FRAC=0.12, NAV_HEIGHT_FRAC=0;
+  var FRAME_RADIUS=28, FRAME_GAP_FRAC=0.12, NAV_HEIGHT_FRAC=0.58;
   var SYMBOL_FILL=1.0, SYMBOL_MARGIN=0.04; var AUTO_TRIM_ALPHA=8, AUTO_TRIM_PAD_MIN=4, AUTO_TRIM_RATIO=0.10, USE_TRIM=true;
 
   var ICON_URLS=[
@@ -866,7 +863,7 @@ Time; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
     ctx.save(); var frY=16+welcomeFontPx+8; this.fpsRect.y=frY; var fr=this.fpsRect; var rr=12; ctx.fillStyle='rgba(8,12,30,0.55)'; ctx.shadowBlur=10; ctx.shadowColor='rgba(109,40,217,0.35)'; roundRectPath(ctx,fr.x,fr.y,fr.w,fr.h,rr); ctx.fill(); var fg=ctx.createLinearGradient(fr.x,fr.y,fr.x+fr.w,fr.y+fr.h); fg.addColorStop(0,'rgba(167,139,250,0.9)'); fg.addColorStop(1,'rgba(110,231,255,0.9)'); ctx.lineWidth=2; ctx.strokeStyle=fg; ctx.stroke(); var textG=ctx.createLinearGradient(fr.x,fr.y,fr.x+fr.w,fr.y); textG.addColorStop(0,'#6ee7ff'); textG.addColorStop(1,'#a78bfa'); ctx.shadowBlur=8; ctx.shadowColor='rgba(110,231,255,0.4)'; ctx.font='700 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillStyle=textG; ctx.fillText('FPS', fr.x+10, fr.y+fr.h/2); if(this.showFPS){ var txt=(this.fpsEMA||0).toFixed(0); ctx.textAlign='right'; ctx.fillText(txt, fr.x+fr.w-10, fr.y+fr.h/2); } ctx.restore();
 
     // balance
-    ctx.save(); var balFontPx=Math.max(24,Math.round(cell*0.26)); var moneyGrad=ctx.createLinearGradient(this.W-200,0,this.W,60); moneyGrad.addColorStop(0,'#ffd066'); moneyGrad.addColorStop(1,'#ff5a0a'); ctx.fillStyle=moneyGrad; ctx.font='900 '+balFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.shadowBlur=10; ctx.shadowColor='rgba(255,120,30,0.65)'; ctx.fillText('$'+Math.round(this.balanceVis),this.W-30,50); ctx.restore();
+    ctx.save(); var balFontPx=Math.max(24,Math.round(cell*0.26)); var moneyGrad=ctx.createLinearGradient(this.W-200,0,this.W,60); moneyGrad.addColorStop(0,'#ffd066'); moneyGrad.addColorStop(1,'#ff5a0a'); ctx.fillStyle=moneyGrad; ctx.font='900 '+balFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.shadowBlur=10; ctx.shadowColor='rgba(255,120,30,0.65)'; ctx.fillText('$'+Math.round(this.balanceVis),this.W-20,16); ctx.restore();
 
     // bet UI
     ctx.save(); var betFontPx=Math.max(22,Math.round(cell*0.24)); var leftOffset=Math.max(radius*1.5, Math.round(cell*1.0)); var bx=cx-leftOffset, by=cy; var navH=Math.max(64,Math.round(cell*NAV_HEIGHT_FRAC)); var margin=10; var maxY=this.H-navH-margin-Math.round(cell*0.2); if(by>maxY) by=maxY; if(bx>this.W-margin) bx=this.W-margin; if(bx<margin) bx=margin; var betText='$'+(this.editingBet?this.betDraft:this.bet); var betGrad=ctx.createLinearGradient(bx-40,by-20,bx+40,by+20); betGrad.addColorStop(0,'#ffb34a'); betGrad.addColorStop(1,'#ffd066'); ctx.fillStyle=betGrad; ctx.font='900 '+betFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.shadowBlur=8; ctx.shadowColor='rgba(255,120,30,0.55)'; ctx.fillText(betText,bx,by+1); var metrics=ctx.measureText(betText); var textW=Math.max(metrics.width, betFontPx*1.4); var textH=Math.round(betFontPx*1.2); this.betRect={ x: Math.round(bx - textW/2 - 8), y: Math.round(by - textH/2 - 8), w: Math.round(textW + 16), h: Math.round(textH + 16) }; var ctlFontPx=Math.max(20,Math.round(betFontPx*0.85)); ctx.font='900 '+ctlFontPx+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.fillStyle='#ffd066'; var plusY=by-textH*0.9-ctlFontPx*0.6; ctx.fillText('+',bx,plusY); var plusW=ctx.measureText('+').width, plusH=Math.round(ctlFontPx*1.1); this.betPlusRect={x:Math.round(bx-plusW/2)-6,y:Math.round(plusY-plusH/2)-4,w:Math.round(plusW)+12,h:plusH+8}; var minusY=by+textH*0.9+ctlFontPx*0.6; ctx.fillText('-',bx,minusY); var minusW=ctx.measureText('-').width, minusH=Math.round(ctlFontPx*1.1); this.betMinusRect={x:Math.round(bx-minusW/2)-6,y:Math.round(minusY-minusH/2)-4,w:Math.round(minusW)+12,h:minusH+8}; if(this.editingBet){ var caretOn=((this._caretBlink*2)|0)%2===0; if(caretOn){ var caretX=bx+textW/2+6; var caretY=by-textH*0.45; ctx.save(); var cg=ctx.createLinearGradient(caretX,caretY,caretX,caretY+textH*0.9); cg.addColorStop(0,'#ffd066'); cg.addColorStop(1,'#ffb34a'); ctx.fillStyle=cg; ctx.fillRect(Math.round(caretX), Math.round(caretY), 3, Math.round(textH*0.9)); ctx.restore(); } } ctx.restore();
@@ -875,7 +872,7 @@ Time; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
 
     if(this._shake && this._shake.time>0){ ctx.restore(); }
   };
-  SlotEngine.prototype._drawNav=function(ctx,L,navH){ return;
+  SlotEngine.prototype._drawNav=function(ctx,L,navH){
     var pad=12; var w=this.W-pad*2; var h=navH; var x=pad; var y=this.H-h-8;
     ctx.save(); ctx.globalAlpha=1; ctx.fillStyle='rgba(8,12,30,0.55)'; roundRectPath(ctx,x,y,w,h,26); ctx.fill();
     var bg=ctx.createLinearGradient(x,y,x+w,y+h); bg.addColorStop(0,'rgba(167,139,250,0.55)'); bg.addColorStop(1,'rgba(110,231,255,0.55)');
@@ -923,7 +920,7 @@ Time; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
     }
 
     // milestones: 12 icons + 1 fonts = 13
-    var TOTAL=14;
+    var TOTAL=13;
     var milestones=0;
     function bump(msg){
       milestones++;
@@ -962,6 +959,7 @@ Time; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
   });
 })();
 </script>
+
 <script>
 (function(){
   var rafId = 0;
@@ -996,10 +994,14 @@ Time; if(now - lastCoinTime < 0.05) return; lastCoinTime = now;
   sync();
 })();
 </script>
+
+
 <script>
 // SAFE OVERRIDE: keep engine intact; just neutralize the lava frame draw call.
 try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
 </script>
+
+
 <script>
 (function(){
   var rafId = 0;
@@ -1048,6 +1050,8 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
   sync();
 })();
 </script>
+
+
 <script>
 (function(){
   function align(){
@@ -1072,6 +1076,8 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
   }
 })();
 </script>
+
+
 <script>
 (function(){
   // === Manual adjustment knobs ===
@@ -1117,6 +1123,9 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
   } else { align(); }
 })();
 </script>
+
+
+
 <!-- UI Overlay Neon Button (manual knobs + feature toggles) -->
 <script>
 (function(){
@@ -1281,126 +1290,6 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loop);
   else loop();
-})();
-</script>
-<script>
-(function(){
-  var rafId = 0;
-  function isHidden(el){
-    if(!el) return true;
-    var cs = getComputedStyle(el);
-    return cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0' || el.offsetParent === null;
-  }
-  function sync(){
-    var img = document.getElementById('balanceBg');
-    var game = document.getElementById('game');
-    var splash = document.getElementById('splash');
-    var cvs = game ? game.querySelector('canvas') : null;
-    if(!img || !cvs){
-      rafId = requestAnimationFrame(sync);
-      return;
-    }
-    var r = cvs.getBoundingClientRect();
-    var W = 720, H = 1280; // base config
-    var scaleX = r.width / W, scaleY = r.height / H;
-
-    var TOP = 0;        // game units from top
-    var RIGHT = -10;      // game units from right edge
-    var WIDTH = 200;    // width in game units
-
-    var left = r.left + (W - RIGHT - WIDTH) * scaleX;
-    var top  = r.top  + TOP * scaleY;
-
-    img.style.left   = left + 'px';
-    img.style.top    = top  + 'px';
-    img.style.width  = (WIDTH * scaleX) + 'px';
-    img.style.height = 'auto';
-    img.style.opacity = isHidden(splash) ? '1' : '0';
-
-    rafId = requestAnimationFrame(sync);
-  }
-  window.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
-  if(window.visualViewport){
-    window.visualViewport.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
-    window.visualViewport.addEventListener('scroll', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
-  }
-  sync();
-})();
-</script><script>
-(function(){
-  var rafId = 0;
-  function sync(){
-    var img = document.getElementById('balanceBg');
-    var game = document.getElementById('game');
-    if(!img || !game){ rafId = requestAnimationFrame(sync); return; }
-    var cvs = game.querySelector('canvas');
-    if(!cvs){ rafId = requestAnimationFrame(sync); return; }
-    var r = cvs.getBoundingClientRect();
-    var W = 720, H = 1280;
-    var scaleX = r.width / W, scaleY = r.height / H;
-    var TOP = -10, RIGHT = -10, WIDTH = 250;
-    var left = r.left + (W - RIGHT - WIDTH) * scaleX;
-    var top  = r.top  + TOP * scaleY;
-    img.style.left = left + 'px';
-    img.style.top  = top  + 'px';
-    img.style.width = (WIDTH * scaleX) + 'px';
-    img.style.opacity = '1'; // always ready; no tie to splash
-    rafId = requestAnimationFrame(sync);
-  }
-  window.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
-  if(window.visualViewport){
-    window.visualViewport.addEventListener('resize', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
-    window.visualViewport.addEventListener('scroll', function(){ cancelAnimationFrame(rafId); sync(); }, {passive:true});
-  }
-  sync();
-})();
-</script>
-<script>
-(function(){
-  var v = document.getElementById('bgVideo');
-  if(!v) return;
-
-  function ensureAutoplay(){
-    try { v.muted = true; v.setAttribute('muted',''); } catch(e){}
-    try { v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); } catch(e){}
-    try { if (v.readyState < 2) v.load(); } catch(e){}
-    var attempt = function(){
-      try {
-        var p = v.play();
-        if (p && typeof p.then === 'function') {
-          p.catch(function(){
-            var kick = function(){
-              document.removeEventListener('pointerdown', kick);
-              document.removeEventListener('keydown', kick);
-              try { v.play(); } catch(_){}
-            };
-            document.addEventListener('pointerdown', kick, {once:true});
-            document.addEventListener('keydown', kick, {once:true});
-          });
-        }
-      } catch(e){}
-    };
-    attempt();
-    v.addEventListener('loadeddata', attempt, {once:true});
-    v.addEventListener('canplay', attempt, {once:true});
-  }
-
-  // reveal when splash hides
-  function reveal(){ document.body.classList.add('splash-hidden'); v.classList.remove('hiddenUntilReady'); }
-  var splash = document.getElementById('splash') || document.querySelector('.splash');
-  if (splash) {
-    var obs = new MutationObserver(function(muts){
-      for (var i=0;i<muts.length;i++){
-        if (muts[i].type === 'attributes' && splash.classList.contains('hide')) { reveal(); obs.disconnect(); break; }
-      }
-    });
-    obs.observe(splash, { attributes:true });
-  } else {
-    setTimeout(reveal, 800);
-  }
-
-  if (v.readyState >= 1) ensureAutoplay();
-  v.addEventListener('loadedmetadata', ensureAutoplay, {once:true});
 })();
 </script>
 
