@@ -1119,10 +1119,10 @@ ctx.clip();
         function finish(msg){
           if (done) return;
           done = true;
-          bump(msg || 'Background video ready');
+          bump(msg || 'Background animation ready');
         }
-        video.oncanplaythrough = function(){ finish('Background video ready'); };
-        video.onerror = function(){ finish('Background video error'); };
+        video.oncanplaythrough = function(){ finish('Background animation ready'); };
+        video.onerror = function(){ finish('Background animation error'); };
         // Hint: kick off loading in some browsers
         video.load && video.load();
       } catch(e){ /* no-op */ }
