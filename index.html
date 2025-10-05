@@ -538,11 +538,13 @@ return { ensure, unlock, playSpin, playBang, playCountdown, playCoin, tick, rese
         catch(_){ icons.rects[i]={sx:0,sy:0,sw:img.naturalWidth,sh:img.naturalHeight}; }
         bump('Icon '+(i+1)+' ready');
       };
-      img.onerror=function(){ failed=true; icons.error=true; window.__showBanner&&window.__showBanner('Failed to load: '+url); bump('Failed icon '+(i+1)); };
+      img.onerror=function(){ failed=true; icons.error=true; window.__showBanner && window.__showBanner('Failed to load: '+url); bump('Failed icon '+(i+1)); };
+      // Per-image watchdog: if neither onload nor onerror has fired within 3500ms, trigger error
+      setTimeout(function(){ if(!icons.imgs[i]){ try{ img.onerror(); }catch(_){ failed=true; bump('Timeout icon '+(i+1)); } } }, 3500);
       img.src=url;
     });
   }
-  function trimRectForImage(img){
+function trimRectForImage(img){
     var w=img.naturalWidth,h=img.naturalHeight;
     var off=document.createElement('canvas'); off.width=w; off.height=h; var o=off.getContext('2d'); o.drawImage(img,0,0);
     var data=o.getImageData(0,0,w,h).data; var minX=w,minY=h,maxX=-1,maxY=-1;
@@ -607,12 +609,100 @@ function StarBG(W,H){ this.w=W; this.h=H; this.t=0; this.stars=[]; for(var i=0;i
   function lavaGradient(ctx,x,y,w,h,t){ var g=ctx.createLinearGradient(x,y+h*Math.sin(t*0.6)*0.1,x+w,y+h*(1+Math.sin(t*0.5)*0.1)); g.addColorStop(0,'#3a0d10'); g.addColorStop(0.25,'#7a1a10'); g.addColorStop(0.45,'#c32c10'); g.addColorStop(0.65,'#ff5a0a'); g.addColorStop(0.85,'#ffd066'); g.addColorStop(1,'#ff5a0a'); return g; }
   //function drawLavaFrame(ctx,x,y,w,h,r,t){ var rr=Math.max(0,Math.min(r,Math.min(w,h)/2)); ctx.save(); ctx.translate(0.5,0.5); ctx.lineWidth=12; ctx.shadowBlur=22; ctx.shadowColor='rgba(255,100,20,0.85)'; ctx.strokeStyle=lavaGradient(ctx,x,y,w,h,t); roundRectPath(ctx,x+3,y+3,w-6,h-6,rr-3); ctx.stroke(); ctx.lineWidth=3; ctx.shadowBlur=10; ctx.strokeStyle='rgba(255,220,120,0.8)'; roundRectPath(ctx,x+8,y+8,w-16,h-16,rr-8); ctx.stroke(); ctx.restore(); }
   function drawLavaButton(ctx,cx,cy,R,t,pressed){ ctx.save(); var g=ctx.createRadialGradient(cx,cy,R*0.2,cx,cy,R); var p=(Math.sin(t*1.6)*0.5+0.5)*0.25; if(pressed){ g.addColorStop(0,'#ffeebf'); g.addColorStop(0.25+p,'#ffb34a'); g.addColorStop(0.65,'#c42d1f'); g.addColorStop(1,'#4a1410'); } else { g.addColorStop(0,'#ffea9a'); g.addColorStop(0.25+p,'#ff962a'); g.addColorStop(0.65,'#a81d0f'); g.addColorStop(1,'#3a0d10'); } ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle=g; ctx.fill(); ctx.lineWidth=6; ctx.strokeStyle='rgba(255,140,30,0.95)'; ctx.shadowColor='rgba(255,120,30,0.9)'; ctx.shadowBlur=20; ctx.stroke(); ctx.beginPath(); ctx.arc(cx,cy,R*0.85,-Math.PI*0.15,Math.PI*0.35); ctx.lineWidth=8; ctx.strokeStyle='rgba(255,240,210,0.35)'; ctx.shadowBlur=0; ctx.stroke(); ctx.restore(); ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 36px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; var tl=ctx.createLinearGradient(cx-40,cy-20,cx+40,cy+20); tl.addColorStop(0,'#fff4e2'); tl.addColorStop(1,'#ffd18a'); ctx.fillStyle=tl; ctx.fillText('SPIN',cx,cy); ctx.restore(); }
-  function drawSymbol(ctx,sym,x,y,size){
-    if(sym==='JP'){ ctx.save(); ctx.fillStyle='#ff2b2b'; ctx.font='900 '+Math.floor(size*0.30)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('JP',x,y); ctx.restore(); return; }
-    var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
-    var off=iconCache.canvases[index]; if(!off) return; var dx=x-off.width*0.5, dy=y-off.height*0.5; try{ ctx.drawImage(off,dx,dy);}catch(_){}
+  
+// === Cosmic glow for zodiac symbols ===
+function drawZodiacGlow(ctx, x, y, size, idx){
+  var t = (window.__cosmicT || 0);
+  var p = 0.55 + 0.35 * Math.sin(t * 2.1 + idx * 0.7); // gentle pulse
+  var R = size * 0.58;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  // Outer nebula
+  var g1 = ctx.createRadialGradient(x, y, R*0.15, x, y, R);
+  g1.addColorStop(0,  'rgba(110,231,255,' + (0.10 + 0.20*p).toFixed(3) + ')'); // cyan
+  g1.addColorStop(0.6,'rgba(167,139,250,' + (0.08 + 0.16*p).toFixed(3) + ')'); // violet
+  g1.addColorStop(1,  'rgba(24,28,64,0)');                                      // fade
+  ctx.fillStyle = g1;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.fill();
+
+  // Hot inner core
+  var g2 = ctx.createRadialGradient(x, y, 0, x, y, R*0.42);
+  g2.addColorStop(0, 'rgba(255,255,255,' + (0.22 + 0.12*p).toFixed(3) + ')');
+  g2.addColorStop(1, 'rgba(110,231,255,0)');
+  ctx.fillStyle = g2;
+  ctx.beginPath(); ctx.arc(x, y, R*0.42, 0, Math.PI*2); ctx.fill();
+
+  // Shimmer ring
+  var ringR = R * 0.74;
+  var lg = ctx.createLinearGradient(x-ringR, y-ringR, x+ringR, y+ringR);
+  lg.addColorStop(0, 'rgba(110,231,255,' + (0.45*p).toFixed(3) + ')');
+  lg.addColorStop(1, 'rgba(167,139,250,' + (0.35*p).toFixed(3) + ')');
+  ctx.strokeStyle = lg;
+  ctx.lineWidth = Math.max(1.6, size * 0.035);
+  ctx.shadowBlur = 18 * p;
+  ctx.shadowColor = 'rgba(124,58,237,' + (0.6*p).toFixed(3) + ')';
+  ctx.beginPath(); ctx.arc(x, y, ringR, 0, Math.PI*2); ctx.stroke();
+
+  // Tiny star sparks orbiting the ring
+  for (var i = 0; i < 3; i++){
+    var ang = (i * 2.094) + t * 0.8 + idx * 0.3; // 120° apart
+    var rr = R * 0.86;
+    var sx = x + Math.cos(ang) * rr;
+    var sy = y + Math.sin(ang) * rr;
+    var sr = size * 0.028 * (0.8 + 0.4*Math.sin(t*3.2 + i + idx));
+    ctx.shadowBlur = 10 + 10*p;
+    ctx.shadowColor = 'rgba(110,231,255,0.85)';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
   }
-  var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,'JP'];
+
+  ctx.restore();
+}
+
+// Subtle gold glow for the JP symbol
+function drawJackpotGlow(ctx, x, y, size){
+  var t = (window.__cosmicT || 0);
+  var p = 0.6 + 0.35 * Math.sin(t * 2.6);
+  var R = size * 0.60;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  var g = ctx.createRadialGradient(x, y, 0, x, y, R);
+  g.addColorStop(0, 'rgba(255,240,180,' + (0.25+0.25*p).toFixed(3) + ')');
+  g.addColorStop(1, 'rgba(255,160,40,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+
+function drawSymbol(ctx,sym,x,y,size){
+  if(sym==='JP'){
+    // Jackpot text with golden glow
+    drawJackpotGlow(ctx, x, y, size);
+    ctx.save();
+    ctx.fillStyle='#ffea69';
+    ctx.font='900 '+Math.floor(size*0.30)+'px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowBlur = 16; ctx.shadowColor = 'rgba(255,208,102,0.85)';
+    ctx.fillText('JP',x,y);
+    ctx.restore();
+    return;
+  }
+  var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
+  var off=iconCache.canvases[index]; if(!off) return;
+
+  // ✨ Cosmic glow behind the symbol
+  drawZodiacGlow(ctx, x, y, size, index);
+
+  // Draw the symbol image on top
+  var dx=x-off.width*0.5, dy=y-off.height*0.5;
+  try{ ctx.drawImage(off,dx,dy);}catch(_){}
+}
+
+var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,'JP'];
 
   // -----------------------------------------------------
   // SlotEngine (game logic)
@@ -1083,22 +1173,37 @@ ctx.clip();
     var fb=document.getElementById('fallback'); if(fb) fb.style.display='none';
     var sh=document.getElementById('soundHint'); if(sh) sh.style.display='block';
 
-    var barFill=document.getElementById('barFill');
-    var barText=document.getElementById('barText');
+    window.barFill = document.getElementById('barFill'); var barFill = window.barFill;
+    window.barText = document.getElementById('barText'); var barText = window.barText;
     var splash=document.getElementById('splash');
-    var hint=document.getElementById('splashHint');
+    window.splashHint = document.getElementById('splashHint'); var hint = window.splashHint;
 
-    function setProgress(pct, msg){
-      if(barFill) barFill.style.width = Math.max(0, Math.min(100, pct)) + '%';
-      if(barText) barText.textContent = (Math.max(0, Math.min(100, pct))).toFixed(0) + '%';
-      if(hint && msg) hint.textContent = msg;
+    
+    // Kick progress immediately so it never shows 0%
+    try { setTimeout(function(){ try{ setProgress(1, 'Initializing…'); }catch(_){} }, 0); } catch(_) {}
+
+function setProgress(pct, msg){
+      // Lazily resolve and cache elements so we never get stuck at 0%
+      if (!window.barFill || !window.barText || !window.splashHint) {
+        window.barFill = document.getElementById('barFill') || window.barFill;
+        window.barText = document.getElementById('barText') || window.barText;
+        window.splashHint = document.getElementById('splashHint') || window.splashHint;
+      }
+      var bf = window.barFill, bt = window.barText, hintEl = window.splashHint;
+      var clamped = Math.max(0, Math.min(100, pct||0));
+      if (bf) bf.style.width = clamped + '%';
+      if (bt) bt.textContent = clamped.toFixed(0) + '%';
+      if (hintEl && msg) hintEl.textContent = msg;
       // keep the splash size correct during load (before canvas exists)
-      syncSplashToCanvas();
+      try { syncSplashToCanvas(); } catch(_) {}
     }
+
 
     // milestones: 12 icons + 1 fonts = 13
     var TOTAL=15; // +1 for Background animation
     var milestones=0;
+    // SPLASH_WATCHDOG: nudge progress if stalled
+    setTimeout(function(){ try{ var v=parseInt((barText && barText.textContent)||'0',10)||0; if(v<2) setProgress(10,'Warming up…'); }catch(_){} }, 2000);
     function bump(msg){
       milestones++;
       var pct = Math.round((milestones / TOTAL) * 100);
@@ -1116,7 +1221,23 @@ ctx.clip();
         video.muted = true;
         video.playsInline = true;
         var done = false;
+// --- FINAL FAILSAFE: auto-finish after 5s if icons/video didn't signal ---
+(function(){
+  try {
+    if (!window.__finalized) {
+      setTimeout(function(){
+        try{
+          if (!window.__finalized) {
+            window.__finalized = true;
+            if (typeof finish === 'function') finish('Timeout forcing start');
+          }
+        }catch(e){}
+      }, 5000);
+    }
+  } catch(e){}
+})();
         function finish(msg){
+          window.__finalized = true;
           if (done) return;
           done = true;
           bump(msg || 'Background animation ready');
@@ -1125,7 +1246,10 @@ ctx.clip();
         video.onerror = function(){ finish('Background animation error'); };
         // Hint: kick off loading in some browsers
         video.load && video.load();
-      } catch(e){ /* no-op */ }
+      
+        // Watchdog: if nothing fires within 4000ms, assume error and continue
+        setTimeout(function(){ finish('Background animation timeout'); }, 4000);
+} catch(e){ /* no-op */ }
     })();
     // Start preloading icons
     preloadIconsWithProgress(ICON_URLS, function(pct, msg){
@@ -1151,6 +1275,8 @@ ctx.clip();
           }
           // fade out splash after sizes are synced
           setTimeout(function(){ if(splash){ splash.classList.add('hide'); } }, 180);
+          // OFFLINE_FAILSAFE: hide splash if still visible after 8s
+          setTimeout(function(){ try{ if(splash && !splash.classList.contains('hide')){ splash.classList.add('hide'); } }catch(_){} }, 8000);
         }, 200);
       });
     });
