@@ -145,7 +145,7 @@ body.loaded #videoMask {
 }
 
 
-/* Ensure splash always covers entire viewport and hides background video */
+/* Ensure splash always covers entire viewport and hides Background animation */
 html, body {
   margin: 0;
   padding: 0;
@@ -1097,7 +1097,7 @@ ctx.clip();
     }
 
     // milestones: 12 icons + 1 fonts = 13
-    var TOTAL=15; // +1 for background video
+    var TOTAL=15; // +1 for Background animation
     var milestones=0;
     function bump(msg){
       milestones++;
@@ -1107,7 +1107,7 @@ ctx.clip();
     }
 
     
-    // Preload background video and count it toward milestones
+    // Preload Background animation and count it toward milestones
     (function(){
       try {
         var video = document.createElement('video');
