@@ -261,6 +261,31 @@ html, body {
 </div>
 </div>
 <script>
+
+// --- Telegram shim (iOS-safe): ensures receiveEvent exists even outside Telegram ---
+(function(){
+  try {
+    // Helper that routes events to either WebApp or GameProxy when available
+    window.__tgSend = function(payload){
+      try{
+        if (window.Telegram && window.Telegram.WebApp && typeof window.Telegram.WebApp.sendData === 'function'){
+          window.Telegram.WebApp.sendData(payload);
+        } else if (window.TelegramGameProxy && typeof window.TelegramGameProxy.receiveEvent === 'function'){
+          window.__tgSend(payload);
+        } else {
+          // Not running inside Telegram; ignore
+        }
+      }catch(e){}
+    };
+    // Ensure TelegramGameProxy exists with a safe no-op receiveEvent
+    if (!window.TelegramGameProxy || typeof window.TelegramGameProxy.receiveEvent !== 'function'){
+      window.TelegramGameProxy = {
+        receiveEvent: function(payload){ window.__tgSend(payload); } // delegate to helper
+      };
+    }
+  } catch(e){}
+})();
+
 (function(){
   'use strict';
 
@@ -317,6 +342,22 @@ html, body {
     fitSplashContent();
   }
 
+
+// Progress watchdog: if stalled under 100% for 2000ms, force completion
+(function(){
+  var last = 0, lastT = Date.now();
+  setInterval(function(){
+    try{
+      var t = (window.barText && parseInt(window.barText.textContent)) || 0;
+      if (t !== last){ last = t; lastT = Date.now(); }
+      if (Date.now() - lastT > 2000 && !__finalized){
+        __iconsReady = true; // assume icons done
+        __videoReady = true; // assume video done
+        maybeComplete('Watchdog');
+      }
+    }catch(e){}
+  }, 500);
+})();
   // Keep splash size in sync with canvas scaling and viewport changes
   window.addEventListener('DOMContentLoaded', syncSplashToCanvas);
   window.addEventListener('resize', syncSplashToCanvas);
@@ -538,13 +579,11 @@ return { ensure, unlock, playSpin, playBang, playCountdown, playCoin, tick, rese
         catch(_){ icons.rects[i]={sx:0,sy:0,sw:img.naturalWidth,sh:img.naturalHeight}; }
         bump('Icon '+(i+1)+' ready');
       };
-      img.onerror=function(){ failed=true; icons.error=true; window.__showBanner && window.__showBanner('Failed to load: '+url); bump('Failed icon '+(i+1)); };
-      // Per-image watchdog: if neither onload nor onerror has fired within 3500ms, trigger error
-      setTimeout(function(){ if(!icons.imgs[i]){ try{ img.onerror(); }catch(_){ failed=true; bump('Timeout icon '+(i+1)); } } }, 3500);
+      img.onerror=function(){ failed=true; icons.error=true; window.__showBanner&&window.__showBanner('Failed to load: '+url); bump('Failed icon '+(i+1)); };
       img.src=url;
     });
   }
-function trimRectForImage(img){
+  function trimRectForImage(img){
     var w=img.naturalWidth,h=img.naturalHeight;
     var off=document.createElement('canvas'); off.width=w; off.height=h; var o=off.getContext('2d'); o.drawImage(img,0,0);
     var data=o.getImageData(0,0,w,h).data; var minX=w,minY=h,maxX=-1,maxY=-1;
@@ -611,76 +650,93 @@ function StarBG(W,H){ this.w=W; this.h=H; this.t=0; this.stars=[]; for(var i=0;i
   function drawLavaButton(ctx,cx,cy,R,t,pressed){ ctx.save(); var g=ctx.createRadialGradient(cx,cy,R*0.2,cx,cy,R); var p=(Math.sin(t*1.6)*0.5+0.5)*0.25; if(pressed){ g.addColorStop(0,'#ffeebf'); g.addColorStop(0.25+p,'#ffb34a'); g.addColorStop(0.65,'#c42d1f'); g.addColorStop(1,'#4a1410'); } else { g.addColorStop(0,'#ffea9a'); g.addColorStop(0.25+p,'#ff962a'); g.addColorStop(0.65,'#a81d0f'); g.addColorStop(1,'#3a0d10'); } ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle=g; ctx.fill(); ctx.lineWidth=6; ctx.strokeStyle='rgba(255,140,30,0.95)'; ctx.shadowColor='rgba(255,120,30,0.9)'; ctx.shadowBlur=20; ctx.stroke(); ctx.beginPath(); ctx.arc(cx,cy,R*0.85,-Math.PI*0.15,Math.PI*0.35); ctx.lineWidth=8; ctx.strokeStyle='rgba(255,240,210,0.35)'; ctx.shadowBlur=0; ctx.stroke(); ctx.restore(); ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 36px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; var tl=ctx.createLinearGradient(cx-40,cy-20,cx+40,cy+20); tl.addColorStop(0,'#fff4e2'); tl.addColorStop(1,'#ffd18a'); ctx.fillStyle=tl; ctx.fillText('SPIN',cx,cy); ctx.restore(); }
   
 // === Cosmic glow for zodiac symbols ===
+
+// === Zodiac color palette & helpers ===
+// Index mapping must match your SYMBOLS order [0..11].
+var ZODIAC_COLORS = [
+  '#FF5B5B', // 0 Aries - hot red
+  '#33D17A', // 1 Taurus - emerald
+  '#FFD166', // 2 Gemini - amber
+  '#48CAE4', // 3 Cancer - aqua
+  '#FF8C42', // 4 Leo - orange/gold
+  '#80ED99', // 5 Virgo - mint
+  '#E29EFF', // 6 Libra - lilac
+  '#D00070', // 7 Scorpio - magenta
+  '#6C63FF', // 8 Sagittarius - indigo
+  '#8D99AE', // 9 Capricorn - slate
+  '#2DD4BF', //10 Aquarius - cyan/teal
+  '#4DD0E1'  //11 Pisces - seafoam
+];
+
+function hexToRgb(hex){
+  var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if(!m) return {r: 180, g: 200, b: 255};
+  return { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) };
+}
+function withAlpha(rgb, a){
+  return 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + a.toFixed(3) + ')';
+}
+function mix(c1, c2, t){
+  return { r: Math.round(c1.r*(1-t)+c2.r*t), g: Math.round(c1.g*(1-t)+c2.g*t), b: Math.round(c1.b*(1-t)+c2.b*t) };
+}
+
 function drawZodiacGlow(ctx, x, y, size, idx){
   var t = (window.__cosmicT || 0);
-  var p = 0.55 + 0.35 * Math.sin(t * 2.1 + idx * 0.7); // gentle pulse
+  var p = 0.55 + 0.35 * Math.sin(t * 2.1 + idx * 0.7);
   var R = size * 0.58;
-
+  var base = ZODIAC_COLORS[(idx||0) % ZODIAC_COLORS.length];
+  var rgb = hexToRgb(base);
+  var light = mix(rgb, {r:255,g:255,b:255}, 0.25);
+  var deep  = mix(rgb, {r:16,g:20,b:48}, 0.50);
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-
-  // Outer nebula
   var g1 = ctx.createRadialGradient(x, y, R*0.15, x, y, R);
-  g1.addColorStop(0,  'rgba(110,231,255,' + (0.10 + 0.20*p).toFixed(3) + ')'); // cyan
-  g1.addColorStop(0.6,'rgba(167,139,250,' + (0.08 + 0.16*p).toFixed(3) + ')'); // violet
-  g1.addColorStop(1,  'rgba(24,28,64,0)');                                      // fade
-  ctx.fillStyle = g1;
-  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.fill();
-
-  // Hot inner core
+  g1.addColorStop(0,  withAlpha(rgb,  0.10 + 0.20*p));
+  g1.addColorStop(0.6,withAlpha(deep, 0.08 + 0.16*p));
+  g1.addColorStop(1,  'rgba(24,28,64,0)');
+  ctx.fillStyle = g1; ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.fill();
   var g2 = ctx.createRadialGradient(x, y, 0, x, y, R*0.42);
-  g2.addColorStop(0, 'rgba(255,255,255,' + (0.22 + 0.12*p).toFixed(3) + ')');
-  g2.addColorStop(1, 'rgba(110,231,255,0)');
-  ctx.fillStyle = g2;
-  ctx.beginPath(); ctx.arc(x, y, R*0.42, 0, Math.PI*2); ctx.fill();
-
-  // Shimmer ring
+  g2.addColorStop(0, withAlpha(light, 0.22 + 0.12*p));
+  g2.addColorStop(1, withAlpha(rgb,   0.00));
+  ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(x, y, R*0.42, 0, Math.PI*2); ctx.fill();
   var ringR = R * 0.74;
   var lg = ctx.createLinearGradient(x-ringR, y-ringR, x+ringR, y+ringR);
-  lg.addColorStop(0, 'rgba(110,231,255,' + (0.45*p).toFixed(3) + ')');
-  lg.addColorStop(1, 'rgba(167,139,250,' + (0.35*p).toFixed(3) + ')');
+  lg.addColorStop(0, withAlpha(light, 0.45*p));
+  lg.addColorStop(1, withAlpha(rgb,   0.35*p));
   ctx.strokeStyle = lg;
   ctx.lineWidth = Math.max(1.6, size * 0.035);
   ctx.shadowBlur = 18 * p;
-  ctx.shadowColor = 'rgba(124,58,237,' + (0.6*p).toFixed(3) + ')';
+  ctx.shadowColor = withAlpha(deep, 0.60*p);
   ctx.beginPath(); ctx.arc(x, y, ringR, 0, Math.PI*2); ctx.stroke();
-
-  // Tiny star sparks orbiting the ring
   for (var i = 0; i < 3; i++){
-    var ang = (i * 2.094) + t * 0.8 + idx * 0.3; // 120° apart
+    var ang = (i * 2.094) + t * 0.8 + idx * 0.3;
     var rr = R * 0.86;
     var sx = x + Math.cos(ang) * rr;
     var sy = y + Math.sin(ang) * rr;
     var sr = size * 0.028 * (0.8 + 0.4*Math.sin(t*3.2 + i + idx));
     ctx.shadowBlur = 10 + 10*p;
-    ctx.shadowColor = 'rgba(110,231,255,0.85)';
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.shadowColor = withAlpha(rgb, 0.85);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
   }
-
   ctx.restore();
 }
 
-// Subtle gold glow for the JP symbol
 function drawJackpotGlow(ctx, x, y, size){
   var t = (window.__cosmicT || 0);
   var p = 0.6 + 0.35 * Math.sin(t * 2.6);
   var R = size * 0.60;
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
   var g = ctx.createRadialGradient(x, y, 0, x, y, R);
   g.addColorStop(0, 'rgba(255,240,180,' + (0.25+0.25*p).toFixed(3) + ')');
   g.addColorStop(1, 'rgba(255,160,40,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.fill();
   ctx.restore();
 }
 
 
 function drawSymbol(ctx,sym,x,y,size){
   if(sym==='JP'){
-    // Jackpot text with golden glow
     drawJackpotGlow(ctx, x, y, size);
     ctx.save();
     ctx.fillStyle='#ffea69';
@@ -693,11 +749,7 @@ function drawSymbol(ctx,sym,x,y,size){
   }
   var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
   var off=iconCache.canvases[index]; if(!off) return;
-
-  // ✨ Cosmic glow behind the symbol
   drawZodiacGlow(ctx, x, y, size, index);
-
-  // Draw the symbol image on top
   var dx=x-off.width*0.5, dy=y-off.height*0.5;
   try{ ctx.drawImage(off,dx,dy);}catch(_){}
 }
@@ -1050,7 +1102,7 @@ for(var i=0;i<this.reels.length;i++){
     var self=this; requestAnimationFrame(function(tt){ self._loop(tt); });
   };
   SlotEngine.prototype._draw=function(){
-    var ctx=this.ctx; ctx.clearRect(0,0,this.W,this.H); this.bg.draw(ctx); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='medium';
+    var ctx=this.ctx; ctx.clearRect(0,0,this.W,this.H); window.__cosmicT = (this.time || 0); this.bg.draw(ctx); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='medium';
     var shakeX=0, shakeY=0; if(this._shake && this._shake.time>0){ var s=this._shake; var k=s.time/0.55; var m=s.mag*(k*k); shakeX=(Math.random()*2-1)*m; shakeY=(Math.random()*2-1)*m; ctx.save(); ctx.translate(shakeX, shakeY); }
     var L=this._computeLayout(); 
 // Draw spin panel behind SPIN (UI context)
@@ -1173,37 +1225,30 @@ ctx.clip();
     var fb=document.getElementById('fallback'); if(fb) fb.style.display='none';
     var sh=document.getElementById('soundHint'); if(sh) sh.style.display='block';
 
-    window.barFill = document.getElementById('barFill'); var barFill = window.barFill;
-    window.barText = document.getElementById('barText'); var barText = window.barText;
-    var splash=document.getElementById('splash');
-    window.splashHint = document.getElementById('splashHint'); var hint = window.splashHint;
+    window.barFill = document.getElementById('barFill');
+window.barText = document.getElementById('barText');
+window.splashHint = document.getElementById('splashHint');
+var barFill = window.barFill;
+var barText = window.barText;
+var splash = document.getElementById('splash');
+var hint = window.splashHint;
 
-    
-    // Kick progress immediately so it never shows 0%
-    try { setTimeout(function(){ try{ setProgress(1, 'Initializing…'); }catch(_){} }, 0); } catch(_) {}
-
-function setProgress(pct, msg){
-      // Lazily resolve and cache elements so we never get stuck at 0%
-      if (!window.barFill || !window.barText || !window.splashHint) {
-        window.barFill = document.getElementById('barFill') || window.barFill;
-        window.barText = document.getElementById('barText') || window.barText;
-        window.splashHint = document.getElementById('splashHint') || window.splashHint;
-      }
-      var bf = window.barFill, bt = window.barText, hintEl = window.splashHint;
-      var clamped = Math.max(0, Math.min(100, pct||0));
-      if (bf) bf.style.width = clamped + '%';
-      if (bt) bt.textContent = clamped.toFixed(0) + '%';
-      if (hintEl && msg) hintEl.textContent = msg;
-      // keep the splash size correct during load (before canvas exists)
-      try { syncSplashToCanvas(); } catch(_) {}
-    }
-
-
-    // milestones: 12 icons + 1 fonts = 13
+    function setProgress(pct, msg){
+  if (!window.barFill || !window.barText || !window.splashHint){
+    window.barFill = document.getElementById('barFill') || window.barFill;
+    window.barText = document.getElementById('barText') || window.barText;
+    window.splashHint = document.getElementById('splashHint') || window.splashHint;
+  }
+  var bf=window.barFill, bt=window.barText, hintEl=window.splashHint;
+  var clamped = Math.max(0, Math.min(100, pct||0));
+  if(bf) bf.style.width = clamped + '%';
+  if(bt) bt.textContent = clamped.toFixed(0) + '%';
+  if(hintEl && msg) hintEl.textContent = msg;
+  try{ syncSplashToCanvas(); }catch(_){}
+}
+// milestones: 12 icons + 1 fonts = 13
     var TOTAL=15; // +1 for Background animation
     var milestones=0;
-    // SPLASH_WATCHDOG: nudge progress if stalled
-    setTimeout(function(){ try{ var v=parseInt((barText && barText.textContent)||'0',10)||0; if(v<2) setProgress(10,'Warming up…'); }catch(_){} }, 2000);
     function bump(msg){
       milestones++;
       var pct = Math.round((milestones / TOTAL) * 100);
@@ -1221,42 +1266,32 @@ function setProgress(pct, msg){
         video.muted = true;
         video.playsInline = true;
         var done = false;
-// --- FINAL FAILSAFE: auto-finish after 5s if icons/video didn't signal ---
-(function(){
-  try {
-    if (!window.__finalized) {
-      setTimeout(function(){
-        try{
-          if (!window.__finalized) {
-            window.__finalized = true;
-            if (typeof finish === 'function') finish('Timeout forcing start');
-          }
-        }catch(e){}
-      }, 5000);
-    }
-  } catch(e){}
-})();
         function finish(msg){
-          window.__finalized = true;
           if (done) return;
           done = true;
           bump(msg || 'Background animation ready');
         }
-        video.oncanplaythrough = function(){ finish('Background animation ready'); };
-        video.onerror = function(){ finish('Background animation error'); };
+        video.oncanplaythrough = function(){ __videoReady=true; maybeComplete('Background animation ready'); };
+        video.onerror = function(){ __videoReady=true; maybeComplete('Background animation error'); };
         // Hint: kick off loading in some browsers
         video.load && video.load();
-      
-        // Watchdog: if nothing fires within 4000ms, assume error and continue
-        setTimeout(function(){ finish('Background animation timeout'); }, 4000);
-} catch(e){ /* no-op */ }
+      setTimeout(function(){ if(!__videoReady){ __videoReady=true; maybeComplete('Video timeout'); } }, 3000);
+        } catch(e){ /* no-op */ }
     })();
-    // Start preloading icons
+    var __iconsReady=false, __videoReady=false, __finalized=false;
+function maybeComplete(reason){
+  if(__finalized) return;
+  if(__iconsReady && (__videoReady || !document.getElementById('bgVideo'))){
+    __finalized = true;
+    try{ finish(reason||'Ready'); }catch(e){}
+  }
+}
+// Start preloading icons
     preloadIconsWithProgress(ICON_URLS, function(pct, msg){
       // map icon-only progress into global total (~0..92%)
       var mapped = Math.min(92, Math.floor((pct/100) * (12/TOTAL) * 100));
       setProgress(mapped, msg||'Loading icons');
-    }, function(){
+    }, function(){ __iconsReady=true; maybeComplete('Icons ready'); 
       milestones = 12;
       setProgress(Math.floor((milestones/TOTAL)*100), 'Icons ready');
 
@@ -1275,8 +1310,6 @@ function setProgress(pct, msg){
           }
           // fade out splash after sizes are synced
           setTimeout(function(){ if(splash){ splash.classList.add('hide'); } }, 180);
-          // OFFLINE_FAILSAFE: hide splash if still visible after 8s
-          setTimeout(function(){ try{ if(splash && !splash.classList.contains('hide')){ splash.classList.add('hide'); } }catch(_){} }, 8000);
         }, 200);
       });
     });
