@@ -735,7 +735,7 @@ function drawJackpotGlow(ctx, x, y, size){
 }
 
 
-function drawSymbol(ctx,sym,x,y,size){
+function drawSymbol(ctx, sym, x, y, size, spinning){
   if(sym===''){
     drawJackpotGlow(ctx, x, y, size);
     ctx.save();
@@ -749,12 +749,12 @@ function drawSymbol(ctx,sym,x,y,size){
   }
   var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
   var off=iconCache.canvases[index]; if(!off) return;
-  drawZodiacGlow(ctx, x, y, size, index);
+  if(!spinning){ drawZodiacGlow(ctx, x, y, size, index); }
   var dx=x-off.width*0.5, dy=y-off.height*0.5;
   try{ ctx.drawImage(off,dx,dy);}catch(_){}
 }
 
-var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,''];
+var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11];
 
   // -----------------------------------------------------
   // SlotEngine (game logic)
@@ -1102,7 +1102,7 @@ for(var i=0;i<this.reels.length;i++){
     var self=this; requestAnimationFrame(function(tt){ self._loop(tt); });
   };
   SlotEngine.prototype._draw=function(){
-    var ctx=this.ctx; ctx.clearRect(0,0,this.W,this.H); window.__cosmicT = (this.time || 0); this.bg.draw(ctx); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='medium';
+    var spinningAny = !this._allStopped(); var ctx=this.ctx; ctx.clearRect(0,0,this.W,this.H); window.__cosmicT = (this.time || 0); this.bg.draw(ctx); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality=(spinningAny ? 'low' : 'medium');
     var shakeX=0, shakeY=0; if(this._shake && this._shake.time>0){ var s=this._shake; var k=s.time/0.55; var m=s.mag*(k*k); shakeX=(Math.random()*2-1)*m; shakeY=(Math.random()*2-1)*m; ctx.save(); ctx.translate(shakeX, shakeY); }
     var L=this._computeLayout(); 
 // Draw spin panel behind SPIN (UI context)
@@ -1118,7 +1118,7 @@ ctx.clip();
     for(var ri=0;ri<reelsN;ri++){
       var rx=startX+ri*(cell+CONFIG.reelSpacing); var reel=this.reels[ri]; var distPx=reel.progressPx; var whole=(distPx/cell)|0; var frac=distPx-whole*cell; var shift=reel.dir*whole; var fracPx=reel.dir*frac; 
       for(var k=0;k<rows+2;k++){ var visIndex=imod(k-1-shift,rows); var sym=reel.finalSymbols[visIndex]; var introDy=(this.intro&&this.intro.offsets?(this.intro.offsets[ri]||0):0);
-      var cy=topY+(k-1)*cell+fracPx+cell*0.5+introDy; drawSymbol(ctx,sym,rx,cy,cell); }
+      var cy=topY+(k-1)*cell+fracPx+cell*0.5+introDy; drawSymbol(ctx, sym, rx, cy, cell, spinningAny); }
     }
     ctx.restore();
 
