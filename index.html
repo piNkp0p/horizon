@@ -99,6 +99,8 @@
   height: 100dvh;
   transform: translateY(40dvh); /* 👈 moves video upward by 3% of viewport height */
   background: #000;
+
+  will-change: transform;
 }
 }
 
@@ -204,6 +206,175 @@ html, body {
   margin: 0 !important;
 }
 </style>
+<style id="sideButtonsStyles">
+  #game { position: relative; overflow: visible; }
+
+  .side-btn {
+    position: absolute;
+    left: 0; top: 0;
+    display: grid;
+    place-items: center;
+    z-index: 5;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    pointer-events: auto;
+    will-change: transform;
+    contain: layout paint;
+  }
+
+  .side-btn img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    filter: none !important;
+    pointer-events: none;
+  }
+
+</style>
+
+<style id="overlayPanelsStyles">
+  :root{
+    --casino-bg-1: #0c0f22;
+    --casino-bg-2: #06091a;
+    --casino-card-top: #151a33;
+    --casino-card-bot: #0a0f26;
+    --casino-neon: #7c3aed; /* purple neon */
+    --casino-cyan: #22d3ee;
+    --casino-gold: #fcd34d;
+    --casino-rose: #fb7185;
+    --casino-text: #e9edf7;
+    --casino-subtle: #a6b1cc;
+    --casino-border: rgba(180,190,210,0.22);
+  }
+
+  .overlay{
+    position:absolute; inset:0; display:none; z-index:10000;
+  }
+  .overlay.open{ display:block; }
+  .overlay__backdrop{
+    position:absolute; inset:0; background:rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+  }
+  .overlay__card{
+  position:absolute; overflow:hidden; border-radius:20px;
+  background: linear-gradient(180deg, rgba(18,22,44,0.96), rgba(8,10,28,0.96));
+  border: 2px solid rgba(124,58,237,0.75);
+  box-shadow:
+    inset 0 0 14px rgba(124,58,237,0.35),
+    inset 0 -10px 22px rgba(0,0,0,0.55),
+    0 12px 28px rgba(0,0,0,0.55),
+    0 0 36px rgba(124,58,237,0.35);
+}
+
+  .overlay__header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; border-bottom:1px solid rgba(124,58,237,0.5);
+}
+  .overlay__header::after{
+  content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px;
+  background: radial-gradient(60% 80% at 50% 100%, rgba(124,58,237,.85), transparent);
+  opacity:.8;
+}
+  .overlay__header h3{
+    margin:0; font-size:17px; letter-spacing:.3px; color:var(--casino-text);
+    text-shadow: 0 0 12px rgba(124,58,237,.25);
+  }
+  .overlay__close{
+    -webkit-tap-highlight-color: transparent; cursor:pointer;
+    background: linear-gradient(180deg,#171b33,#0e132b);
+    color:#e5e7eb;
+    border:1px solid rgba(167,139,250,.45); border-radius:12px; padding:8px 12px; line-height:1;
+    box-shadow: inset 0 1px 4px rgba(255,255,255,0.06), 0 6px 16px rgba(0,0,0,.35);
+  }
+  .overlay__close:active{ transform: scale(0.96); }
+  .overlay__body{overflow-x:hidden;overflow-x:hidden;box-sizing:border-box; overflow-x:hidden; padding:14px; max-height:70vh; overflow:auto; }
+
+  /* Tabs */
+  .tabs{ display:flex; gap:8px; margin:0 0 12px 0; }
+  .tab-btn{
+    flex:1; text-align:center; padding:10px 12px; cursor:pointer; user-select:none;
+    border-radius:12px; border:1px solid rgba(167,139,250,.45);
+    background: linear-gradient(180deg,#16173a,#0e122b);
+    color: #e9d5ff; font-weight:700;
+    box-shadow: inset 0 0 10px rgba(124,58,237,.12);
+  }
+  .tab-btn.active{
+    border-color: rgba(110,231,255,.6);
+    color:#f0fdff;
+    box-shadow: inset 0 0 18px rgba(34,211,238,.25), 0 0 18px rgba(34,211,238,.12);
+  }
+
+  /* History table */
+  .hist-table{ width:100%; border-collapse:collapse; font-size:13px; color:var(--casino-text);  table-layout:fixed; }
+  .hist-table thead th{
+    position:relative; padding:9px 8px; font-weight:700; color:#dbeafe; text-align:left;
+    border-bottom:1px solid rgba(180,190,210,0.18);
+  }
+  .hist-table thead th::after{
+    content:""; position:absolute; left:0; right:0; bottom:-1px; height:1px;
+    background: linear-gradient(90deg, transparent, var(--casino-neon), transparent); opacity:.7;
+  }
+  .hist-table td{ padding:8px 8px; border-bottom:1px dashed rgba(180,190,210,0.12); }
+  .hist-table tr:nth-child(2n){ background: rgba(124,58,237,0.05); }
+  .hist-badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700; }
+  .hist-badge.win{  background: rgba(34,197,94,0.18);  color:#86efac; box-shadow:0 0 8px rgba(34,197,94,.25) inset; }
+  .hist-badge.loss{ background: rgba(239,68,68,0.18); color:#fecaca; box-shadow:0 0 8px rgba(239,68,68,.25) inset; }
+
+  /* Wallet forms — one-column layout */
+  .form-1col{ display:grid; grid-template-columns: 1fr; gap:10px; }
+  .form-row{ display:block; }
+  .form-row label{ font-size:12px; color:var(--casino-subtle); display:block; margin:0 0 4px 2px; }
+  .form-row input, .form-row select{
+    width:100%; padding:10px 12px; border-radius:12px;
+    background: linear-gradient(180deg, #0f1227, #0b0f22);
+    border:1px solid rgba(167,139,250,.45);
+    color:#e5e7eb; outline:none;
+    -webkit-text-fill-color:#e5e7eb;
+    box-shadow: inset 0 0 10px rgba(124,58,237,.12);
+  }
+  .form-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:10px; }
+  .btn{
+  border:2px solid rgba(124,58,237,.6);
+  background: linear-gradient(180deg,#151a33,#0c0f24);
+  color:#e9d5ff; border-radius:14px; padding:10px 14px; cursor:pointer; font-weight:800;
+  box-shadow: inset 0 0 10px rgba(124,58,237,.25), 0 6px 16px rgba(0,0,0,.35);
+}
+  .btn:active{ transform: scale(0.96); }
+  .btn.primary{
+  border:2px solid rgba(34,211,238,.7);
+  background: linear-gradient(180deg,#112136,#0b1020);
+  color:#e0f2fe; border-radius:14px; font-weight:800;
+  box-shadow: inset 0 0 14px rgba(34,211,238,.25), 0 0 24px rgba(34,211,238,.25);
+}
+
+  /* Small devices */
+  @media (max-width: 480px){
+    .overlay__header h3{ font-size:16px; }
+    .hist-table{ font-size:12px;  table-layout:fixed; }
+  }
+
+  .hist-table th, .hist-table td{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .form-row input, .form-row select{
+    width:100%; padding:10px 12px; border-radius:12px;
+    background: linear-gradient(180deg, #0f1227, #0b0f22);
+    border:1px solid rgba(167,139,250,.45);
+    color:#e5e7eb; outline:none;
+    -webkit-text-fill-color:#e5e7eb;
+    box-shadow: inset 0 0 10px rgba(124,58,237,.12);
+  }
+  /* Gradient title like in-game neon banner */
+  #overlayTitle{background:linear-gradient(90deg,#f0abfc,#93c5fd);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 10px rgba(147,197,253,.25);}
+
+  .form-row select option{
+    color:#e5e7eb; background:#0b0f22;
+  }
+.overlay__section{ max-width:min(520px, 88%); margin: 0 auto; }
+.form-1col{ display:grid; grid-template-columns: 1fr; gap:10px; }
+.form-row input, .form-row select{ width:100%; max-width:100%; box-sizing:border-box; }
+
+.tab-btn{position:relative; z-index:1; pointer-events:auto;}
+</style>
+
 </head>
 <body>
 <div id=\"videoMask\"></div>
@@ -215,7 +386,70 @@ html, body {
   style="position:fixed; inset:0; width:100%; height:100%; object-fit:contain; background:#000; z-index:0; pointer-events:none;">
   <source src="./backgroundstory.mp4" type="video/mp4"/>
 </video>
-<img alt="Balance background" id="balanceBg" src="./balance.png" style="position:fixed;left:0;top:0;width:0;height:auto;pointer-events:none;z-index:0;opacity:1;"/></div>
+<img alt="Balance background" id="balanceBg" src="./balance.png" style="position:fixed;left:0;top:0;width:0;height:auto;pointer-events:none;z-index:0;opacity:1;"/><a id="historyBtn" class="side-btn side-btn--left" href="#" aria-label="Open History" role="button">
+      <img src="https://pinkp0p.github.io/horizon/history.png" alt="History"/>
+    </a>
+    <a id="walletBtn" class="side-btn side-btn--right" href="#" aria-label="Open Wallet" role="button">
+      <img src="https://pinkp0p.github.io/horizon/wallet.png" alt="Wallet"/>
+    </a>
+
+<div id="overlay" class="overlay" aria-hidden="true"><div class="overlay__backdrop" id="overlayBackdrop"></div><div class="overlay__card" id="overlayCard" role="dialog" aria-modal="true" aria-labelledby="overlayTitle"><div class="overlay__header"><h3 id="overlayTitle">Panel</h3><button class="overlay__close" id="overlayClose" aria-label="Close">✕</button></div><div class="overlay__body"><div id="historyContent" style="display:none"><table class="hist-table" id="historyTable"><thead><tr><th>Time</th><th>Bet</th><th>Result</th><th>Payout</th></tr></thead><tbody></tbody></table></div><div id="walletContent" style="display:none"><div class="overlay__section">
+  <div class="tabs">
+    <button class="tab-btn active" id="tabAdd">Add Account</button>
+    <button class="tab-btn" id="tabWithdraw" type="button">Withdraw</button>
+  </div>
+
+  <!-- ADD ACCOUNT (tab) -->
+  <div id="tabAddPane">
+    <div class="form-1col">
+      <div class="form-row">
+        <label for="acctType">Account Type</label>
+        <select id="acctType">
+          <option value="bank">Bank</option>
+          <option value="paypal">PayPal</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="acctName">Full Name</label>
+        <input id="acctName" placeholder="John Smith" />
+      </div>
+      <div class="form-row" id="bankFields">
+        <label for="bankName">Bank Name</label>
+        <input id="bankName" placeholder="Your bank" />
+        <label for="iban" style="margin-top:8px">Account / IBAN</label>
+        <input id="iban" placeholder="Account number / IBAN" />
+      </div>
+      <div class="form-actions">
+        <button class="btn" id="addAccountBtn">Add Account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WITHDRAW (tab) -->
+  <div id="tabWithdrawPane" style="display:none">
+    <div class="form-1col">
+      <div class="form-row">
+        <label for="withdrawAmount">Withdraw Amount</label>
+        <input id="withdrawAmount" type="number" min="1" placeholder="Amount" />
+      </div>
+      <div class="form-row">
+        <label for="currency">account</label>
+        <select id="currency">
+          <option value="USD">paypal</option>
+          <option value="EUR">Bank1</option>
+          <option value="LKR">Bank2</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="requestWithdrawBtn">Request Withdraw</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</div></div>
+</div>
 <!-- Hidden input for inline bet editing -->
 <input aria-label="Edit bet" id="betInput" inputmode="numeric" pattern="[0-9]*" style="position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;border:0;padding:0;background:transparent;color:transparent" type="text"/>
 <div class="error-banner" id="errorBanner"></div>
@@ -301,7 +535,7 @@ html, body {
   // Splash ↔ Canvas size sync + content fit
   // -----------------------------------------------------
   var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
-    spinBaseDuration:2.0, spinStagger:0.45, cyclesBase:6, cyclesStep:2 };
+    spinBaseDuration:8.0, spinStagger:1.80, cyclesBase:24, cyclesStep:8 };
 
   function fitSplashContent(){
     var splash = document.getElementById('splash'); if(!splash) return;
@@ -555,23 +789,48 @@ return { ensure, unlock, playSpin, playBang, playCountdown, playCoin, tick, rese
     'https://pinkp0p.github.io/horizon/zodiac_1.png','https://pinkp0p.github.io/horizon/zodiac_2.png','https://pinkp0p.github.io/horizon/zodiac_3.png','https://pinkp0p.github.io/horizon/zodiac_4.png',
     'https://pinkp0p.github.io/horizon/zodiac_5.png','https://pinkp0p.github.io/horizon/zodiac_6.png','https://pinkp0p.github.io/horizon/zodiac_7.png','https://pinkp0p.github.io/horizon/zodiac_8.png',
     'https://pinkp0p.github.io/horizon/zodiac_9.png','https://pinkp0p.github.io/horizon/zodiac_10.png','https://pinkp0p.github.io/horizon/zodiac_11.png','https://pinkp0p.github.io/horizon/zodiac_12.png'
-  ];
-  var icons={ imgs:Array(12).fill(null), rects:Array(12).fill(null), ready:false, error:false };
-  var iconCache={ cell:0, inner:0, canvases:Array(12).fill(null) };
+  , 'https://raw.githubusercontent.com/piNkp0p/horizon/main/zodiac_13.png', 'https://pinkp0p.github.io/horizon/wallet.png','https://pinkp0p.github.io/horizon/history.png' ];
+  var icons={ imgs:Array(ICON_URLS.length).fill(null), rects:Array(ICON_URLS.length).fill(null), ready:false, error:false };
+  var iconCache={ cell:0, inner:0, canvases:Array(ICON_URLS.length).fill(null) };
 
   function preloadIconsWithProgress(urls, onProgress, onDone){
-    var total = urls.length;
-    var loaded = 0, failed = false;
-    function bump(msg){
-      loaded++;
-      var pct = Math.round((loaded/total)*100);
-      try{ onProgress && onProgress(pct, msg||('Loaded '+loaded+'/'+total)); }catch(_){}
-      if(loaded>=total && !failed){
-        icons.ready = true;
-        onDone && onDone();
-      }
+  var total = ICON_URLS.length;
+  var loaded = 0, failed = false;
+  function bump(msg){
+    loaded++;
+    var pct = Math.round((loaded/total)*100);
+    try{ onProgress && onProgress(pct, msg||('Loaded '+loaded+'/'+total)); }catch(_){}
+    if(loaded>=total && !failed){
+      icons.ready = true;
+      onDone && onDone();
     }
-    urls.forEach(function(url,i){
+  }
+  // Prefer decode off the main thread using createImageBitmap
+  var canBitmap = (typeof createImageBitmap === 'function');
+  urls.forEach(function(url,i){
+    if (canBitmap) {
+      fetch(url, {mode:'cors'}).then(function(r){
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.blob();
+      }).then(function(b){ return createImageBitmap(b); })
+      .then(function(bmp){
+        icons.imgs[i] = bmp;
+        try{ icons.rects[i] = USE_TRIM? {sx:0,sy:0,sw:bmp.width,sh:bmp.height} : {sx:0,sy:0,sw:bmp.width,sh:bmp.height}; }
+        catch(_){ icons.rects[i] = {sx:0,sy:0,sw:bmp.width,sh:bmp.height}; }
+        bump('Icon '+(i+1)+' ready (bitmap)');
+      }).catch(function(){
+        // Fallback to <img>
+        var img=new Image(); img.decoding='async'; img.crossOrigin='anonymous';
+        img.onload=function(){
+          icons.imgs[i]=img;
+          try{ icons.rects[i]=USE_TRIM?trimRectForImage(img):{sx:0,sy:0,sw:img.naturalWidth,sh:img.naturalHeight}; }
+          catch(_){ icons.rects[i]={sx:0,sy:0,sw:img.naturalWidth,sh:img.naturalHeight}; }
+          bump('Icon '+(i+1)+' ready (fallback)');
+        };
+        img.onerror=function(){ if(!failed){ failed=true; try{ onDone && onDone(new Error('Failed '+url)); }catch(_){}} };
+        img.src=url;
+      });
+    } else {
       var img=new Image(); img.decoding='async'; img.crossOrigin='anonymous';
       img.onload=function(){
         icons.imgs[i]=img;
@@ -579,10 +838,11 @@ return { ensure, unlock, playSpin, playBang, playCountdown, playCoin, tick, rese
         catch(_){ icons.rects[i]={sx:0,sy:0,sw:img.naturalWidth,sh:img.naturalHeight}; }
         bump('Icon '+(i+1)+' ready');
       };
-      img.onerror=function(){ failed=true; icons.error=true; window.__showBanner&&window.__showBanner('Failed to load: '+url); bump('Failed icon '+(i+1)); };
+      img.onerror=function(){ if(!failed){ failed=true; try{ onDone && onDone(new Error('Failed '+url)); }catch(_){}} };
       img.src=url;
-    });
-  }
+    }
+  });
+}
   function trimRectForImage(img){
     var w=img.naturalWidth,h=img.naturalHeight;
     var off=document.createElement('canvas'); off.width=w; off.height=h; var o=off.getContext('2d'); o.drawImage(img,0,0);
@@ -597,8 +857,8 @@ return { ensure, unlock, playSpin, playBang, playCountdown, playCoin, tick, rese
     if(!icons.ready) return;
     var inner=Math.max(1,Math.floor(cell*(SYMBOL_FILL-2*SYMBOL_MARGIN)));
     if(iconCache.cell===cell && iconCache.inner===inner) return;
-    iconCache.cell=cell; iconCache.inner=inner; iconCache.canvases=Array(12).fill(null);
-    for(var i=0;i<12;i++){
+    iconCache.cell=cell; iconCache.inner=inner; iconCache.canvases=Array(ICON_URLS.length).fill(null);
+    for(var i=0;i<ICON_URLS.length;i++){
       var img=icons.imgs[i]; if(!img) continue;
       var r=icons.rects[i]||{sx:0,sy:0,sw:img.naturalWidth,sh:img.naturalHeight};
       var sc=Math.min(inner/r.sw, inner/r.sh);
@@ -665,7 +925,8 @@ var ZODIAC_COLORS = [
   '#c9842a', // 8 Sagittarius - indigo
   '#cc1a6c', // 9 Capricorn - slate
   '#03b65a', //10 Aquarius - cyan/teal
-  '#1fb59b'  //11 Pisces - seafoam
+  '#1fb59b',  //11 Pisces - seafoam
+  '#e3a03a'
 ];
 
 function hexToRgb(hex){
@@ -747,14 +1008,14 @@ function drawSymbol(ctx, sym, x, y, size, spinning){
     ctx.restore();
     return;
   }
-  var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=12) return; if(!icons.ready) return; buildIconCache(size);
+  var index=parseInt(sym,10); if(isNaN(index)||index<0||index>=ICON_URLS.length) return; if(!icons.ready) return; buildIconCache(size);
   var off=iconCache.canvases[index]; if(!off) return;
   if(!spinning){ drawZodiacGlow(ctx, x, y, size, index); }
   var dx=x-off.width*0.5, dy=y-off.height*0.5;
   try{ ctx.drawImage(off,dx,dy);}catch(_){}
 }
 
-var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11];
+var SYMBOLS=[0,1,2,3,4,5,6,7,8,9,10,11,12];
 
   // -----------------------------------------------------
   // SlotEngine (game logic)
@@ -1004,16 +1265,102 @@ cy -= 40; // move up by 50px to fit spin panel
   };
   SlotEngine.prototype._allStopped=function(){ for(var i=0;i<this.reels.length;i++){ if(this.reels[i].spinning) return false; } return true; };
   function computeWinAmount(sym, bet){ var idx=parseInt(sym,10); if(!isFinite(idx)) return bet*5; var mult = 6 + (idx%4)*4; return bet * mult; }
-  SlotEngine.prototype._checkForWin=function(){
-    var rows=CONFIG.rows; var n=this.reels.length;
-    for(var r=0;r<rows;r++){
-      var first=this.reels[0].finalSymbols[r];
-      var ok = (first!=='');
-      for(var c=1;c<n;c++) if(this.reels[c].finalSymbols[r]!==first) ok=false;
-      if(ok){ this.winState='hidden'; this.hiddenRow=r; this.countdown=0; this.winAmount = computeWinAmount(first, this.bet); return true; }
+  
+SlotEngine.prototype._checkForWin=function(){
+  var rows = (typeof CONFIG!=='undefined' && CONFIG && CONFIG.rows) ? CONFIG.rows : 3;
+  var anyWin=false, found=false;
+
+  try{
+    var makeHash = function(){
+      var out=[];
+      for(var ri=0; ri<rows; ri++){
+        var a=(this.reels[0]&&this.reels[0].finalSymbols[ri])||'';
+        var b=(this.reels[1]&&this.reels[1].finalSymbols[ri])||'';
+        var c=(this.reels[2]&&this.reels[2].finalSymbols[ri])||'';
+        out.push([a,b,c].join(','));
+      }
+      return out.join('|');
+    }.bind(this);
+    var cur = makeHash();
+    if(!this.__lastComboHash){ this.__lastComboHash = cur; return false; }
+    if(this.__lastComboHash === cur){ return false; }
+    this.__lastComboHash = cur;
+  }catch(_){}
+
+  var JACKPOT_INDEX = -1;
+  try{
+    if (typeof ICON_URLS !== 'undefined' && ICON_URLS && ICON_URLS.length){
+      for (var i=0;i<ICON_URLS.length;i++){
+        var s=String(ICON_URLS[i]||'');
+        if(/zodiac_13(?:\.[a-z0-9]+)?(?:\?.*)?$/i.test(s) || /zodiac_13/i.test(s)){ JACKPOT_INDEX=i; break; }
+      }
     }
+  }catch(e){}
+  if (JACKPOT_INDEX < 0) JACKPOT_INDEX = 12;
+
+  var TWO_MATCH_RATIO = 0.5;
+  function toId(x){ if(typeof x==='string' && /^\d+$/.test(x)) return parseInt(x,10); return x; }
+  function eq(x,y){ x=toId(x); y=toId(y); return x===y; }
+  function isJack(sym){
+    try{
+      sym=toId(sym);
+      if (sym===JACKPOT_INDEX) return true;
+      if (typeof sym==='string'){
+        return (/zodiac_13(?:\.[a-z0-9]+)?(?:\?.*)?$/i.test(sym) || /zodiac_13/i.test(sym));
+      }
+      if (typeof sym==='number' && typeof ICON_URLS!=='undefined'){
+        var u=ICON_URLS[sym]||''; return (/zodiac_13(?:\.[a-z0-9]+)?(?:\?.*)?$/i.test(u) || /zodiac_13/i.test(u));
+      }
+    }catch(e){}
     return false;
-  };
+  }
+  function logHistory(kind, bet, payout){
+    try{
+      var table=document.getElementById('historyTable'); if(!table) return;
+      var tb=table.querySelector('tbody'); if(!tb) return;
+      var tr=document.createElement('tr');
+      var t=new Date(); var timeStr=t.toLocaleTimeString();
+      tr.innerHTML = '<td>'+timeStr+'</td><td>$'+bet+'</td><td>'+kind+'</td><td>$'+payout+'</td>';
+      tb.prepend(tr);
+    }catch(e){}
+  }
+
+  for (var r=0; r<rows; r++){
+    if(found) { continue; }
+    var a=this.reels[0].finalSymbols[r];
+    var b=this.reels[1].finalSymbols[r];
+    var c=this.reels[2].finalSymbols[r];
+    if(a===''||b===''||c==='') continue;
+    var A=toId(a), B=toId(b), C=toId(c);
+
+    if (eq(A,B) && eq(B,C) && isJack(A)){
+      var baseJ = (typeof computeWinAmount==='function') ? computeWinAmount(A, this.bet) : (this.bet||1);
+      var winJ = Math.round(baseJ * 5);
+      this.balance = (this.balance||0) + winJ; this.winAmount = winJ; this.hiddenRow=-1; this.winState='idle';
+      anyWin=true; found=true;
+      try{ (window.showJackpotOverlay||window.showJackpot||window.jackpotWin||function(){})(); }catch(e){}
+      logHistory('JACKPOT', this.bet, winJ);
+    }
+    else if (eq(A,B) && eq(B,C) && !isJack(A)){
+      var win3 = (typeof computeWinAmount==='function') ? computeWinAmount(A, this.bet) : (this.bet||1);
+      this.balance = (this.balance||0) + win3; this.winAmount = win3; this.hiddenRow=-1; this.winState='idle';
+      anyWin=true; found=true;
+      try{ (window.showBigWinOverlay||window.showBigWin||window.bigWin||function(){})(); }catch(e){}
+      logHistory('3-match', this.bet, win3);
+    }
+    else if ((eq(A,B) && !eq(A,C) && !isJack(A)) || (eq(B,C) && !eq(B,A) && !isJack(B))){
+      var matched = eq(A,B) ? A : B;
+      var base2 = (typeof computeWinAmount==='function') ? computeWinAmount(matched, this.bet) : (this.bet||1);
+      var win2 = Math.max(1, Math.round(base2 * TWO_MATCH_RATIO));
+      this.balance = (this.balance||0) + win2; this.winAmount = win2; this.hiddenRow=-1; this.winState='idle';
+      anyWin=true; found=true;
+      try{ (window.showBigWinOverlay||window.showBigWin||window.bigWin||function(){})(); }catch(e){}
+      logHistory('2-match', this.bet, win2);
+    }
+  }
+  return anyWin;
+};
+
   SlotEngine.prototype._startCountdown=function(){ this.winState='countdown'; this.countdown=3; this._countInt=4; };
   SlotEngine.prototype._triggerReveal=function(){ this.winState='revealing'; this._celebrateT=1.6; this._drop.t=0; this._drop.hit=false; this._drop.boom=0; this._drop.dur=0.35; this._pendingBangPlayed=false; this.transfer={active:false,t:0,p:0,dur:2.0,coins:[],committed:false, srcX:0,srcY:0,tgtX:this.W-40,tgtY:26}; };
   SlotEngine.prototype._updateReels=function(dt){
@@ -1477,9 +1824,9 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
   // ====== Manual knobs (edit these to position/scale) ======
   window.SPIN_OVERLAY = Object.assign({
     ENABLED: true,        // set false to disable overlay
-    DIAM_FRAC: 0.26,      // base diameter as % of canvas width
+    DIAM_FRAC: 0.20,      // base diameter as % of canvas width
     SCALE: 1.32,          // fine-tune size
-    BOTTOM_FRAC: 0.06,    // distance from bottom as % of canvas height
+    BOTTOM_FRAC: 0.1,    // distance from bottom as % of canvas height
     OFFSET_X: 0,          // px shift right(+)/left(-)
     OFFSET_Y: -50,          // px shift down(+)/up(-)
     SHOW_FLARE: false,    // thin orange line accent (false hides it)
@@ -1837,7 +2184,7 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
     const POP_ELEV_CAP   = Math.max(4, R*0.12);
     const SHADOW_OPACITY = 0.38;
 
-    const plateW = R * 5.85;
+    const plateW = R * 5;
     const plateH = R * 2.2;
     const plateX = cx - plateW/2;
     const plateY = cy - R*-0.2;
@@ -2091,5 +2438,328 @@ function syncSplashToCanvas() {
 }
 </script>
 
+<script id="sideButtonsAutoAnchor">
+(function(){
+  function el(id){ return document.getElementById(id); }
+
+  var game, canvas, leftBtn, rightBtn;
+
+  
+
+function place(){
+  if(!game || !canvas || !leftBtn || !rightBtn) return;
+  var g = game.getBoundingClientRect();
+  var r = canvas.getBoundingClientRect();
+  if(!r.width || !r.height) return;
+
+  // Measure the rendered sizes of the icon <img> elements (fallback to 60px)
+  function imgSize(btn, fallback){
+    var img = btn && btn.querySelector && btn.querySelector('img');
+    if(img){
+      var ir = img.getBoundingClientRect();
+      return { w: (ir.width||fallback), h:(ir.height||fallback) };
+    }
+    var br = btn.getBoundingClientRect ? btn.getBoundingClientRect() : {width:0,height:0};
+    return { w:(br.width||fallback), h:(br.height||fallback) };
+  }
+  var lb = imgSize(leftBtn, 60);
+  var rb = imgSize(rightBtn, 60);
+
+  // Horizontal gap from canvas edges (reduce to pull closer to edges)
+  var gapX = Math.max(4, Math.floor(r.width * 0.01)); // 1% of canvas width
+
+  // Vertical placement as a percentage of canvas height
+  var yPct = 0.85; // 0.70 higher, 0.85 lower
+  var y = (r.top - g.top) + (r.height * yPct) - (lb.h / 2);
+
+  // Desired X positions relative to #game
+  var leftDesired  = (r.left  - g.left) + gapX;
+  var rightDesired = (r.right - g.left) - rb.w - gapX;
+
+  // Clamp inside canvas
+  var minX = (r.left  - g.left) + 4;
+  var maxX = (r.right - g.left) - rb.w - 4;
+  var minY = (r.top   - g.top) + 4;
+  var maxY = (r.bottom- g.top) - lb.h - 4;
+
+  var leftX  = Math.max(minX, Math.min(leftDesired,  maxX));
+  var rightX = Math.max(minX, Math.min(rightDesired, maxX));
+  y = Math.max(minY, Math.min(y, maxY));
+
+  // GPU-friendly transform — no layout thrash
+  leftBtn.style.transform  = 'translate3d(' + leftX.toFixed(2) + 'px,' + y.toFixed(2) + 'px,0)';
+  rightBtn.style.transform = 'translate3d(' + rightX.toFixed(2) + 'px,' + y.toFixed(2) + 'px,0)';
+}
+
+        
+
+  function init(){
+    game = el('game');
+    leftBtn = el('historyBtn');
+    rightBtn = el('walletBtn');
+    canvas = game ? game.querySelector('canvas') : null;
+    if(!game || !leftBtn || !rightBtn || !canvas){
+      setTimeout(init, 120);
+      return;
+    }
+    place();
+    window.addEventListener('resize', place, {passive:true});
+    window.addEventListener('orientationchange', place, {passive:true});
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, {once:true});
+  else init();
+})();
+</script>
+<script id="overlayPanelsScript">(function(){var e=document.getElementById("overlay"),t=document.getElementById("overlayCard"),n=document.getElementById("overlayTitle"),o=document.getElementById("overlayClose"),a=document.getElementById("overlayBackdrop"),d=document.getElementById("historyContent"),l=document.getElementById("walletContent"),r=document.querySelector("#historyTable tbody"),i=[],c=[];function s(e){var t=e?new Date(e):new Date;return t.toLocaleString()}function y(){if(!r)return;var e="";if(0===c.length)e='<tr><td colspan="4" style="opacity:.8">No bets made yet.</td></tr>';else for(var t=c.length-1;t>=0;t--){var n=c[t];e+="<tr><td>"+(n.time||s())+"</td><td>"+(n.bet||0)+"</td><td>"+(n.win?'<span class=\"hist-badge win\">WIN</span>':'<span class=\"hist-badge loss\">LOSS</span>')+"</td><td>"+(null!=n.payout?n.payout:"-")+"</td></tr>"}r.innerHTML=e}window.HorizonUI=window.HorizonUI||{},window.HorizonUI.addBetHistory=function(e,t,n,o){c.push({bet:e,win:!!t,payout:n,time:o||s()}),document.getElementById("overlay")&&document.getElementById("overlay").classList.contains("open")&&d&&"none"!==d.style.display&&y()};var u=document.getElementById("acctType"),m=document.getElementById("acctName"),v=document.getElementById("bankFields"),h=document.getElementById("bankName"),p=document.getElementById("iban"),f=document.getElementById("withdrawAmount"),g=document.getElementById("currency"),w=document.getElementById("addAccountBtn"),_=document.getElementById("requestWithdrawBtn");function b(){u&&v&&(v.style.display="bank"===u.value?"":"none")}function E(){var e=u?u.value:"bank",t=m&&m.value||"";if(!(t=t.trim()))return void alert("Please enter account name/identifier");var n={type:e,name:t};if("bank"===e){if(n.bank=h&&h.value||"",n.iban=p&&p.value||"",!(n.bank=n.bank.trim())||!(n.iban=n.iban.trim()))return void alert("Please enter bank and account/IBAN")}i.push(n);try{var o={type:"wallet",action:"add_account",data:n};window.__tgSend?window.__tgSend(JSON.stringify(o)):window.TelegramGameProxy&&"function"==typeof window.TelegramGameProxy.receiveEvent&&window.TelegramGameProxy.receiveEvent(JSON.stringify(o))}catch(e){}alert("Account added.")}function L(){var e=parseFloat(f&&f.value||"0");if(!(e>0))return void alert("Enter a valid withdrawal amount");var t={amount:e,currency:g&&g.value||"USD"};try{var n={type:"wallet",action:"request_withdraw",data:t};window.__tgSend?window.__tgSend(JSON.stringify(n)):window.TelegramGameProxy&&"function"==typeof window.TelegramGameProxy.receiveEvent&&window.TelegramGameProxy.receiveEvent(JSON.stringify(n))}catch(e){}alert("Withdrawal request submitted.")}u&&u.addEventListener("change",b),b(),w&&w.addEventListener("click",function(e){e.preventDefault(),E()}),_&&_.addEventListener("click",function(e){e.preventDefault(),L()});function k(o){e&&t&&(n.textContent="wallet"===o?"Wallet":"Betting History",d.style.display="history"===o?"":"none",l.style.display="wallet"===o?"":"none",e.classList.add("open"),e.setAttribute("aria-hidden","false"),x(),"history"===o&&y())}function C(){e&&(e.classList.remove("open"),e.setAttribute("aria-hidden","true"))}o&&o.addEventListener("click",C),a&&a.addEventListener("click",C);function x(){var e=document.getElementById("game");if(!e)return;var n=e.querySelector("canvas");if(!n)return;var o=e.getBoundingClientRect(),a=n.getBoundingClientRect(),d=Math.floor(.8*a.width),l=Math.floor(.6*a.height),r=a.left-o.left+Math.floor((a.width-d)/2),i=a.top-o.top+Math.floor((a.height-l)/2);t.style.left=r+"px",t.style.top=i+"px",t.style.width=d+"px",t.style.height=l+"px"}window.addEventListener("resize",x,{passive:!0}),window.addEventListener("orientationchange",x,{passive:!0});function O(){var e=document.getElementById("historyBtn"),t=document.getElementById("walletBtn");e&&e.addEventListener("click",function(e){k("history")}),t&&t.addEventListener("click",function(e){k("wallet")})}"loading"===document.readyState?document.addEventListener("DOMContentLoaded",O,{once:!0}):O(),window.HorizonUI=window.HorizonUI||{},window.HorizonUI.openOverlay=k,window.HorizonUI.closeOverlay=C})();
+
+function initWalletTabs(){
+  var tabAdd = document.getElementById('tabAdd');
+  var tabWithdraw = document.getElementById('tabWithdraw');
+  var addPane = document.getElementById('tabAddPane');
+  var withdrawPane = document.getElementById('tabWithdrawPane');
+
+  function activate(which){
+    var addActive = (which === 'add');
+    if (tabAdd) tabAdd.classList.toggle('active', addActive);
+    if (tabWithdraw) tabWithdraw.classList.toggle('active', !addActive);
+    if (addPane) addPane.style.display = addActive ? '' : 'none';
+    if (withdrawPane) withdrawPane.style.display = addActive ? 'none' : '';
+    // store state for future opens
+    document.body.dataset.walletTab = which;
+  }
+
+  // Clear old listeners by resetting onclick each time
+  if (tabAdd) tabAdd.onclick = function(ev){ ev.preventDefault(); ev.stopPropagation(); activate('add'); };
+  if (tabWithdraw) tabWithdraw.onclick = function(ev){ ev.preventDefault(); ev.stopPropagation(); activate('withdraw'); };
+
+  // Use last chosen tab if available, else default to add
+  var last = document.body.dataset.walletTab || 'add';
+  activate(last === 'withdraw' ? 'withdraw' : 'add');
+}
+
+</script>
+
+<script id="overlayWalletTabHook">
+(function(){
+  function ready(fn){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn, {once:true}); else fn(); }
+  ready(function(){
+    // Hook wallet button to always init tabs
+    var wb = document.getElementById('walletBtn');
+    if(wb){
+      wb.addEventListener('click', function(){
+        try{ if(window.initWalletTabs) initWalletTabs(); }catch(e){}
+      });
+    }
+    // Fallback event delegation on wallet container
+    var wallet = document.getElementById('walletContent');
+    if(wallet && !wallet.__tabsDelegated){
+      wallet.addEventListener('click', function(ev){
+        var t = ev.target.closest && ev.target.closest('.tab-btn');
+        if(!t) return;
+        ev.preventDefault();
+        if(window.initWalletTabs){
+          // re-run to ensure handlers/state exist, then simulate activation
+          initWalletTabs();
+          if(t.id === 'tabWithdraw'){
+            document.body.dataset.walletTab = 'withdraw';
+            initWalletTabs();
+          } else {
+            document.body.dataset.walletTab = 'add';
+            initWalletTabs();
+          }
+        }
+      });
+      wallet.__tabsDelegated = true;
+    }
+  });
+})();
+</script>
+
+
+
+<style id="fxCanvasStyles">
+  #fxCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; display: block; }
+</style>
+
+<script id="fxCanvasOverlay">
+(function () {
+  // Detect canvas and fit overlay to its *client* box each frame (prevents stretch/drift)
+  var CANVAS_SELECTOR = '#game canvas, canvas#gameCanvas, .game canvas, canvas';
+  function getGameCanvas(){ return document.querySelector(CANVAS_SELECTOR); }
+  function ensureFxCanvas(){
+    var cv = getGameCanvas(); if(!cv) return null;
+    var parent = cv.parentElement || document.body;
+    // parent must clip/anchor
+    var ps = getComputedStyle(parent);
+    if(ps.position === 'static'){ parent.style.position = 'relative'; }
+    if(ps.overflow === 'visible'){ parent.style.overflow = 'hidden'; }
+    var fx = document.getElementById('fxCanvas');
+    if(!fx){ fx = document.createElement('canvas'); fx.id='fxCanvas'; parent.appendChild(fx); }
+    else if(fx.parentElement !== parent){ parent.appendChild(fx); }
+    // style to exactly match canvas client rect
+    var r = cv.getBoundingClientRect();
+    var pr = parent.getBoundingClientRect();
+    fx.style.position = 'absolute';
+    fx.style.left = (cv.offsetLeft) + 'px';
+    fx.style.top  = (cv.offsetTop)  + 'px';
+    fx.style.width  = (cv.clientWidth)  + 'px';
+    fx.style.height = (cv.clientHeight) + 'px';
+    fx.style.pointerEvents = 'none';
+    fx.style.zIndex = 9999;
+    // backing store matches client size * DPR
+    var dpr = Math.max(1, window.devicePixelRatio || 1);
+    var w = cv.clientWidth || cv.width || 720;
+    var h = cv.clientHeight || cv.height || 1280;
+    var needResize = (fx.width !== Math.round(w*dpr) || fx.height !== Math.round(h*dpr));
+    if(needResize){
+      fx.width = Math.round(w*dpr);
+      fx.height= Math.round(h*dpr);
+    }
+    var ctx = fx.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return {fx:fx, ctx:ctx, w:w, h:h, dpr:dpr, cv:cv};
+  }
+
+  // --- particles ---
+  function makeCoins(cx, cy, count){
+    var out=[]; for(var i=0;i<count;i++){ var ang=(Math.PI*2)*(i/count)+(Math.random()*0.25);
+      var spd=220+Math.random()*180;
+      out.push({x:cx,y:cy,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd*0.85,life:0,ttl:0.9+Math.random()*0.6});
+    } return out;
+  }
+  function drawCoins(ctx, coins, dt){
+    ctx.save();
+    for(var i=coins.length-1;i>=0;i--){
+      var c=coins[i]; c.life+=dt; var t=c.life/c.ttl;
+      if(t>=1){ coins.splice(i,1); continue; }
+      var ease = t<0.2 ? (t/0.2) : (1-(t-0.2)/0.8);
+      var x=c.x+c.vx*t, y=c.y+c.vy*t;
+      var r=8, alpha=Math.max(0,1-t);
+      var g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,0,x,y,r);
+      g.addColorStop(0,'rgba(255,255,255,'+alpha.toFixed(3)+')');
+      g.addColorStop(0.4,'rgba(255,215,64,'+(0.9*alpha).toFixed(3)+')');
+      g.addColorStop(1,'rgba(214,164,0,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r*(0.6+0.6*ease),0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawGlow(ctx, cx, cy, rx, ry, stops, alpha){
+  ctx.save();
+  // Clip strictly to the visible canvas area in logical coords
+  try{
+    var a=1,d=1;
+    if (ctx.getTransform) { var tr = ctx.getTransform(); a = tr.a||1; d = tr.d||1; }
+    var w = (ctx.canvas && ctx.canvas.width ? ctx.canvas.width/a : 720);
+    var h = (ctx.canvas && ctx.canvas.height ? ctx.canvas.height/d : 1280);
+    ctx.beginPath(); ctx.rect(0,0,w,h); ctx.clip();
+  }catch(e){ /* best-effort clip; continue */ }
+
+  var grad = ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(rx,ry));
+  for (var i=0;i<stops.length;i++) grad.addColorStop(stops[i][0], stops[i][1]);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+  // image cache
+  var imgCache={};
+  function getImage(src, cb){
+    if(imgCache[src] && imgCache[src].complete) return cb(imgCache[src]);
+    var im = new Image();
+    im.onload=function(){ imgCache[src]=im; cb(im); };
+    im.src=src;
+  }
+
+  // Single runner shared by BigWin/Jackpot
+  function runFx(kind, imgSrc){
+    var env = ensureFxCanvas(); if(!env) return;
+    var ctx = env.ctx, W = env.w, H = env.h;
+    var cx=W/2, cy=H*0.42;
+    getImage(imgSrc, function(img){
+      var start=performance.now(), dur=1400;
+      var coins=makeCoins(cx,cy,26);
+      // image size (fit within current client size)
+      var imgW = Math.min(W*0.86, 640); var imgH = imgW * (img.height/img.width);
+
+      function loop(now){
+        // Keep fx canvas glued to the real canvas each frame
+        env = ensureFxCanvas(); if(!env) return; ctx = env.ctx; W=env.w; H=env.h; cx=W/2; cy=H*0.42;
+
+        var t = Math.min(1, (now-start)/dur);
+        ctx.clearRect(0,0,W,H);
+        // backdrop
+        ctx.save(); ctx.fillStyle='rgba(0,0,0,'+(0.6*t).toFixed(3)+')'; ctx.fillRect(0,0,W,H); ctx.restore();
+        // glow
+        if(kind==='jackpot'){
+          drawGlow(ctx,cx,cy+10,imgW*0.75,imgH*0.75,[[0,'rgba(255,240,160,0.35)'],[0.6,'rgba(255,120,0,0.28)'],[1,'rgba(255,120,0,0)']],0.9*t);
+        }else{
+          drawGlow(ctx,cx,cy+10,imgW*0.7,imgH*0.7,[[0,'rgba(255,240,160,0.30)'],[0.6,'rgba(255,200,0,0.24)'],[1,'rgba(255,200,0,0)']],0.85*t);
+        }
+        // pop
+        var scale = 0.7 + 0.3*Math.sin(t*Math.PI);
+        var w = imgW*(0.9+0.1*scale), h = imgH*(0.9+0.1*scale);
+        ctx.save(); ctx.translate(cx-w/2, cy-h/2); ctx.drawImage(img, 0,0, w,h); ctx.restore();
+        drawCoins(ctx, coins, 1/60);
+        if(t<1) requestAnimationFrame(loop);
+        else{
+          var fadeStart=performance.now();
+          (function fade(now2){
+            var ft = Math.min(1,(now2-fadeStart)/300);
+            ctx.globalAlpha = 1-ft; ctx.clearRect(0,0,W,H); ctx.globalAlpha=1;
+            if(ft<1) requestAnimationFrame(fade); else ctx.clearRect(0,0,W,H);
+          })(fadeStart);
+        }
+      }
+      requestAnimationFrame(loop);
+    });
+  }
+
+  // Disable legacy DOM overlays so we only see the canvas-based one
+  (function killLegacy(){
+    var ids=['bigwinOverlay','jackpotOverlay'];
+    ids.forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
+  })();
+
+  // Expose robust globals that the game can call
+  window.showBigWinOverlay = function(){ runFx('bigwin', './bigwin.png'); };
+  window.showJackpotOverlay = function(){ runFx('jackpot', './jackpot.png'); };
+  // Common fallbacks some codebases use:
+  window.showBigWin = window.showBigWinOverlay;
+  window.showJackpot = window.showJackpotOverlay;
+  window.bigWin = window.showBigWinOverlay;
+  window.jackpotWin = window.showJackpotOverlay;
+
+  // Hotkeys for testing
+  document.addEventListener('keydown', function(e){
+    if(e.shiftKey && (e.key==='B'||e.key==='b')) window.showBigWinOverlay();
+    if(e.shiftKey && (e.key==='J'||e.key==='j')) window.showJackpotOverlay();
+  });
+})();
+</script>
+
+
 </body>
 </html>
+
+<script id="sideButtonsScript">
+(function(){
+  function send(evt){
+    try{
+      if (window.__tgSend){ window.__tgSend(JSON.stringify(evt)); }
+      else if (window.TelegramGameProxy && typeof window.TelegramGameProxy.receiveEvent === 'function'){
+        window.TelegramGameProxy.receiveEvent(JSON.stringify(evt));
+      }
+    }catch(e){}
+  }
+  function ready(){
+    var w = document.getElementById('walletBtn');
+    var h = document.getElementById('historyBtn');
+    if(w){ w.addEventListener('click', function(e){ e.preventDefault(); send({type:'ui', action:'open_wallet'}); }); }
+    if(h){ h.addEventListener('click', function(e){ e.preventDefault(); send({type:'ui', action:'open_history'}); }); }
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
+  else ready();
+})();
+</script>
