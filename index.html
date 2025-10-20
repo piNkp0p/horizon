@@ -5,6 +5,111 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <title>Horizon — Telegram Slot Machine</title>
+<!-- Telegram Mini App + API wiring (add near top of the page) -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+(function () {
+  // ---- config ----
+  // If you ever serve the game from a different hostname, set API_BASE explicitly:
+  // const API_BASE = 'https://api.horizonskills.site';
+  const API_BASE = ''; // same-origin via Nginx: /api/* -> api container
+
+  // Build headers with Telegram Mini App auth
+  function tgAuthHeaders() {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    const initData = tg && tg.initData ? tg.initData : '';
+    const h = {};
+    if (initData) h['X-Telegram-Init-Data'] = initData;
+    return h;
+  }
+
+  // Small helper for calling our API
+  async function callApi(path, {method='GET', json, headers} = {}) {
+    const opts = {
+      method,
+      headers: {
+        'Accept': 'application/json',
+        ...(json ? {'Content-Type': 'application/json'} : {}),
+        ...tgAuthHeaders(),
+        ...(headers || {})
+      },
+      credentials: 'omit'
+    };
+    if (json !== undefined) opts.body = JSON.stringify(json);
+
+    const res = await fetch(API_BASE + path, opts);
+    if (res.status === 401) {
+      // Not running inside Telegram or signature invalid
+      console.warn('Unauthorized (401). Are you running inside Telegram Mini App?');
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(()=>'');
+      throw new Error(`API ${path} ${res.status}: ${t || res.statusText}`);
+    }
+    const ct = res.headers.get('content-type') || '';
+    return ct.includes('application/json') ? res.json() : res.text();
+  }
+
+  // Patch window.fetch so existing game code that calls just "spin" keeps working.
+  // It will be rewritten to "/api/spin" and will include the Telegram auth header.
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    try {
+      const req = (typeof input === 'string') ? new URL(input, location.origin)
+                                             : new URL(input.url, location.origin);
+      const pathname = req.pathname.replace(/^\/+/, ''); // no leading slash
+      // match: spin, state, withdraw, spins — with or without leading /api/
+      if (/^(api\/)?(spin|state|withdraw|spins)\b/.test(pathname)) {
+        // normalize to /api/...
+        const parts = pathname.startsWith('api/') ? pathname : ('api/' + pathname);
+        req.pathname = '/' + parts;
+        // merge headers + Telegram auth
+        const nextInit = init ? {...init} : {};
+        nextInit.headers = {
+          ...(init && init.headers ? init.headers : {}),
+          ...tgAuthHeaders()
+        };
+        // Default JSON for POST if body is an object
+        if (nextInit.body && typeof nextInit.body === 'object' && !(nextInit.body instanceof FormData)) {
+          nextInit.headers['Content-Type'] = nextInit.headers['Content-Type'] || 'application/json';
+          nextInit.body = JSON.stringify(nextInit.body);
+        }
+        return _origFetch(req.toString(), nextInit);
+      }
+    } catch (_) { /* fall through */ }
+
+    return _origFetch(input, init);
+  };
+
+  // Balance helpers (uses your existing #balanceDisplay element)
+  function setBalance(v) {
+    const el = document.getElementById('balanceDisplay');
+    if (el) el.textContent = (Number(v) || 0).toFixed(2);
+  }
+  async function refreshState() {
+    try {
+      const s = await callApi('/api/state');
+      // Expect: { balance, jackpot, maxBet, ... }
+      if (s && 'balance' in s) setBalance(s.balance);
+      // You can also wire jackpot / maxBet to your UI here if needed.
+    } catch (e) {
+      console.warn('state fetch failed:', e.message);
+    }
+  }
+  window.refreshGameState = refreshState;
+  window.updateBalance = setBalance;
+
+  // Initialize Telegram Mini App UI (safe even outside TG)
+  try { if (window.Telegram && Telegram.WebApp) {
+    Telegram.WebApp.expand();
+    Telegram.WebApp.ready();
+  }} catch(e){}
+
+  // Kick off initial state load
+  document.addEventListener('DOMContentLoaded', refreshState);
+})();
+</script>
+
 <style>
     html, body { height: 100%; margin: 0; background: #020616; overflow: hidden; }
     #game { position: fixed; inset: 0; display: grid; place-items: center; }
@@ -375,6 +480,228 @@ html, body {
 .tab-btn{position:relative; z-index:1; pointer-events:auto;}
 </style>
 
+
+<style id="miniapp-error-styles">
+  .input-error { border-color: #ef4444 !important; outline: none; }
+  .input-error::placeholder { color: #ef4444; opacity: 1; }
+  .input-error::-webkit-input-placeholder { color: #ef4444; }
+  .input-error::-moz-placeholder { color: #ef4444; }
+  .input-error:-ms-input-placeholder { color: #ef4444; }
+  .input-error:-moz-placeholder { color: #ef4444; }
+</style>
+
+
+<script id="no-alerts">
+  // Disable blocking popups for Telegram Mini App
+  try {
+    window.alert = function(){ /* no-op */ };
+    window.confirm = function(){ return false; };
+    window.prompt = function(){ return ""; };
+  } catch(e) {}
+</script>
+
+
+<style id="press-effect-styles">
+  .side-btn {
+    transition: transform 90ms ease, filter 90ms ease;
+    transform-origin: center;
+  }
+  .side-btn.is-pressed {
+    transform: scale(0.92);
+    filter: brightness(0.9) saturate(1.1);
+  }
+  .side-btn.is-pressed img {
+    transform: scale(0.96);
+    transition: transform 90ms ease;
+  }
+</style>
+
+
+<!-- BEGIN: Telegram Mini App + API wiring (auto-added) -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+(function () {
+  // ========= config =========
+  // Same-origin via Nginx? keep empty string. Separate subdomain? set full URL.
+  const API_BASE = ''; // e.g. 'https://api.horizonskills.site' if not same-origin
+
+  // Build Telegram auth header (only exists inside Telegram Mini App)
+  function tgAuthHeaders() {
+    const initData = window.Telegram?.WebApp?.initData || '';
+    return initData ? { 'X-Telegram-Init-Data': initData } : {};
+  }
+
+  // Small helper to call our API
+  async function callApi(path, { method = 'GET', json, headers } = {}) {
+    const opts = {
+      method,
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {
+        Accept: 'application/json',
+        ...(json ? { 'Content-Type': 'application/json' } : {}),
+        ...tgAuthHeaders(),
+        ...(headers || {})
+      }
+    };
+    if (json !== undefined) opts.body = JSON.stringify(json);
+
+    const res = await fetch(API_BASE + path, opts);
+    if (res.status === 401) {
+      console.warn('401 from API. This usually means the request was not sent from inside Telegram or initData was invalid.');
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(()=>'');
+      throw new Error(`API ${path} ${res.status}: ${t || res.statusText}`);
+    }
+    const ct = res.headers.get('content-type') || '';
+    return ct.includes('application/json') ? res.json() : res.text();
+  }
+
+  // Override window.fetch so old code that calls "spin" or "/spin" still works.
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    try {
+      const u = typeof input === 'string' ? new URL(input, location.origin)
+                                          : new URL(input.url, location.origin);
+      const clean = u.pathname.replace(/^\/+/, ''); // strip leading /
+      // match spin/state/withdraw/spins, with or without a leading "api/"
+      if (/^(api\/)?(spin|state|withdraw|spins)/.test(clean)) {
+        const normalized = clean.startsWith('api/') ? `/${clean}` : `/api/${clean}`;
+        const nextInit = { ...(init || {}) };
+        nextInit.headers = { ...(init?.headers || {}), ...tgAuthHeaders() };
+        if (nextInit.body && typeof nextInit.body === 'object' && !(nextInit.body instanceof FormData)) {
+          nextInit.headers['Content-Type'] ||= 'application/json';
+          nextInit.body = JSON.stringify(nextInit.body);
+        }
+        return _origFetch(API_BASE + normalized, nextInit);
+      }
+    } catch (_) {}
+    return _origFetch(input, init);
+  };
+
+  // Balance helpers (uses existing #balanceDisplay if present)
+  function setBalance(v) {
+    const el = document.getElementById('balanceDisplay');
+    if (el) el.textContent = (Number(v) || 0).toFixed(2);
+  }
+  async function refreshState() {
+    try {
+      const s = await callApi('/api/state');
+      if (s && 'balance' in s) setBalance(s.balance);
+      // Optionally handle: s.jackpot, s.maxBet, etc.
+    } catch (e) {
+      console.warn('state fetch failed:', e.message);
+    }
+  }
+
+  // Expose helpers if needed elsewhere
+  window.gameApi = {
+    state: () => callApi('/api/state'),
+    spin:  (bet) => callApi('/api/spin',     { method: 'POST', json: { bet } }),
+    withdraw: (amount) => callApi('/api/withdraw', { method: 'POST', json: { amount } }),
+    spins: (page=1, size=20) => callApi(`/api/spins?page=${page}&size=${size}`)
+  };
+  window.refreshGameState = refreshState;
+  window.updateBalance = setBalance;
+
+  // Initialize Telegram UI (safe even outside Telegram)
+  try { if (window.Telegram?.WebApp) { Telegram.WebApp.expand(); Telegram.WebApp.ready(); } } catch(e){}
+
+  // Load initial state on startup
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', refreshState, { once: true });
+  } else {
+    refreshState();
+  }
+})();
+</script>
+<!-- END: Telegram Mini App + API wiring -->
+
+
+<style id="splashBrandBlock">
+/* === Patch: Harmonized Magenta-Violet Neon Glow Loading Bar === */
+#splash {
+  position: fixed !important;
+  left: 0; top: 0; width: 100%; height: 100%;
+  background: url('splashimage.png') center center / contain no-repeat #000 !important;
+  z-index: 99999 !important;
+  overflow: hidden;
+}
+
+#splash .splash-wrap {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Hide brand elements instantly */
+#splash .splash-wrap [class*="logo"],
+#splash .splash-wrap [id*="logo"],
+#splash .splash-wrap [class*="brand"],
+#splash .splash-wrap [id*="brand"],
+#splash .splash-wrap [class*="title"],
+#splash .splash-wrap [id*="title"],
+#splash .splash-wrap [class*="heading"],
+#splash .splash-wrap [id*="heading"],
+#splash .splash-wrap [class*="horizon"],
+#splash .splash-wrap [id*="horizon"],
+#splash .splash-wrap img[alt*="logo" i],
+#splash .splash-wrap img[src*="logo" i],
+#splash .splash-wrap img[alt*="horizon" i],
+#splash .splash-wrap img[src*="horizon" i] {
+  display: none !important;
+}
+
+/* Keep progress/loading elements visible */
+#splash .splash-wrap [class*="progress" i],
+#splash .splash-wrap [id*="progress" i],
+#splash .splash-wrap [class*="loading" i],
+#splash .splash-wrap [id*="loading" i],
+#splash .splash-wrap [role="progressbar"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* Harmonized magenta–violet gradient with deeper neon glow */
+#splash .splash-wrap .progress,
+#splash .splash-wrap .loading-bar,
+#splash .splash-wrap .bar,
+#splash .splash-wrap [class*="progress" i] {
+  background: linear-gradient(90deg, #b030f0, #ff66cc, #e040ff) !important;
+  box-shadow: 0 0 20px #e040ff, 0 0 40px #b030f0, 0 0 60px #ff66cc !important;
+  border-radius: 10px !important;
+  height: 12px !important;
+}
+
+/* Add subtle magenta glow to the bar container */
+#splash .splash-wrap .progress-container,
+#splash .splash-wrap .progress-wrap {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px !important;
+  box-shadow: inset 0 0 25px rgba(176, 48, 240, 0.4);
+  padding: 5px !important;
+}
+
+/* Keep loading text consistent with new color palette */
+#splash .splash-wrap * {
+  color: #f0a8ff !important;
+  text-shadow: 0 0 10px #b030f0, 0 0 20px #ff66cc, 0 0 30px #e040ff !important;
+  font-weight: 600 !important;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #000;
+}
+</style>
+
 </head>
 <body>
 <div id=\"videoMask\"></div>
@@ -403,49 +730,45 @@ html, body {
   <div id="tabAddPane">
     <div class="form-1col">
       <div class="form-row">
-        <label for="acctType">Account Type</label>
-        <select id="acctType">
-          <option value="bank">Bank</option>
-          <option value="paypal">PayPal</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label for="acctName">Full Name</label>
-        <input id="acctName" placeholder="John Smith" />
-      </div>
-      <div class="form-row" id="bankFields">
-        <label for="bankName">Bank Name</label>
-        <input id="bankName" placeholder="Your bank" />
-        <label for="iban" style="margin-top:8px">Account / IBAN</label>
-        <input id="iban" placeholder="Account number / IBAN" />
+        <label for="paypalEmail">PayPal Email</label>
+        <input id="paypalEmail" type="email" placeholder="name@example.com" autocomplete="email" />
       </div>
       <div class="form-actions">
-        <button class="btn" id="addAccountBtn">Add Account</button>
+        <button class="btn" id="addAccountBtn" type="button">Save PayPal</button>
       </div>
     </div>
   </div>
-
   <!-- WITHDRAW (tab) -->
+
   <div id="tabWithdrawPane" style="display:none">
     <div class="form-1col">
       <div class="form-row">
         <label for="withdrawAmount">Withdraw Amount</label>
         <input id="withdrawAmount" type="number" min="1" placeholder="Amount" />
       </div>
-      <div class="form-row">
-        <label for="currency">account</label>
-        <select id="currency">
-          <option value="USD">paypal</option>
-          <option value="EUR">Bank1</option>
-          <option value="LKR">Bank2</option>
-        </select>
-      </div>
       <div class="form-actions">
-        <button class="btn primary" id="requestWithdrawBtn">Request Withdraw</button>
+        <button class="btn primary" id="requestWithdrawBtn" type="button">Request Withdraw</button>
       </div>
+    </div>
+
+    <div class="overlay__section" style="margin-top:16px;">
+      <h4 style="margin:0 0 8px 2px;color:#c7d2fe;">Ongoing Withdrawals</h4>
+      <table class="hist-table" id="withdrawalsTable">
+        <thead>
+          <tr>
+            <th>Amount</th>
+            <th>Date</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 </div>
+</div>
+</div>
+
 </div>
 </div>
 </div></div>
@@ -458,6 +781,8 @@ html, body {
     Tap the share icon → <b>Open in Safari</b>, or host this file on HTTPS and open that link.
   </div>
 <div class="sound-hint" id="soundHint" style="display:none">Tap anywhere to <b>enable sound</b> 🔊</div>
+<div class="sound-hint" id="balanceHint" style="display:none">Insufficient balance — <b>top up to play</b> 💸</div>
+
 <!-- HTMLAudio fallbacks (WebAudio is preferred) -->
 <audio id="spinSound" muted="" playsinline="" preload="auto">
 <source src="https://cdn.jsdelivr.net/gh/naptha/talkify/sounds/notification.mp3" type="audio/mpeg"/>
@@ -534,7 +859,7 @@ html, body {
   // -----------------------------------------------------
   // Splash ↔ Canvas size sync + content fit
   // -----------------------------------------------------
-  var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:20, startBalance:1000,
+  var CONFIG={ width:720, height:1280, reelCount:3, rows:4, symbolSize:180, reelSpacing:16, bet:1, startBalance:0,
     spinBaseDuration:8.0, spinStagger:1.80, cyclesBase:24, cyclesStep:8 };
 
   function fitSplashContent(){
@@ -1161,7 +1486,16 @@ this.intro = { active:false, offsets:[0,0,0], started:[false,false,false], done:
     var pressActive=false; var selfRef=this; var audioArmed=false;
     var canvasToGame=function(ev){ var r=selfRef.canvas.getBoundingClientRect(); return {x:(ev.clientX-r.left)/r.width*selfRef.W,y:(ev.clientY-r.top)/r.height*selfRef.H}; };
     var withinRect=function(p,r){ return r && p.x>=r.x && p.x<=r.x+r.w && p.y>=r.y && p.y<=r.y+r.h; };
-    var withinButton=function(p){ var L=selfRef._computeLayout(); var R=L.radius; var dx=p.x-L.cx, dy=p.y-L.cy; return dx*dx+dy*dy<=R*R; };
+    var withinButton=function(p){
+      var L = selfRef._computeLayout();
+      var R = L.radius;
+      var cx = L.cx, cy = L.cy;
+      var dx = p.x - cx, dy = p.y - cy;
+      var effR = R * 0.75;            // tighter circle
+      // hard cap: don't allow touches significantly below the button
+      if (p.y > cy + R * 0.85) return false;
+      return (dx*dx + dy*dy) <= effR*effR;
+    };
     var withinNav=function(p){ if(!selfRef.nav||!selfRef.nav.rects||!selfRef.nav.rects.length) return -1; for(var i=0;i<selfRef.nav.rects.length;i++){ if(withinRect(p,selfRef.nav.rects[i])) return i; } return -1; };
 
     function armAudio(){
@@ -1976,7 +2310,7 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
       if (typeof drawSpinPanel === "function") {
         var betValue = (window.$slot && typeof window.$slot.getBet==='function') ? window.$slot.getBet()
                       : (window.$slot && typeof window.$slot.bet==='number') ? window.$slot.bet
-                      : (CONFIG && typeof CONFIG.bet==='number') ? CONFIG.bet : 20;
+                      : (CONFIG && typeof CONFIG.bet==='number') ? CONFIG.bet : 1;
         (function(){
   var __rects = drawSpinPanel(ctx, cx, cy, R, betValue);
   if (window.$slot) {
@@ -2060,7 +2394,7 @@ try { window.drawLavaFrame = function(ctx,x,y,w,h,r,t){}; } catch(e) {}
     var r = cvs.getBoundingClientRect();
     var W = 720, H = 1280;
     var scaleX = r.width / W, scaleY = r.height / H;
-    var TOP = -10, RIGHT = -10, WIDTH = 250;
+    var TOP = -10, RIGHT = -18, WIDTH = 250;
     var left = r.left + (W - RIGHT - WIDTH) * scaleX;
     var top  = r.top  + TOP * scaleY;
     img.style.left = left + 'px';
@@ -2511,7 +2845,7 @@ function place(){
   else init();
 })();
 </script>
-<script id="overlayPanelsScript">(function(){var e=document.getElementById("overlay"),t=document.getElementById("overlayCard"),n=document.getElementById("overlayTitle"),o=document.getElementById("overlayClose"),a=document.getElementById("overlayBackdrop"),d=document.getElementById("historyContent"),l=document.getElementById("walletContent"),r=document.querySelector("#historyTable tbody"),i=[],c=[];function s(e){var t=e?new Date(e):new Date;return t.toLocaleString()}function y(){if(!r)return;var e="";if(0===c.length)e='<tr><td colspan="4" style="opacity:.8">No bets made yet.</td></tr>';else for(var t=c.length-1;t>=0;t--){var n=c[t];e+="<tr><td>"+(n.time||s())+"</td><td>"+(n.bet||0)+"</td><td>"+(n.win?'<span class=\"hist-badge win\">WIN</span>':'<span class=\"hist-badge loss\">LOSS</span>')+"</td><td>"+(null!=n.payout?n.payout:"-")+"</td></tr>"}r.innerHTML=e}window.HorizonUI=window.HorizonUI||{},window.HorizonUI.addBetHistory=function(e,t,n,o){c.push({bet:e,win:!!t,payout:n,time:o||s()}),document.getElementById("overlay")&&document.getElementById("overlay").classList.contains("open")&&d&&"none"!==d.style.display&&y()};var u=document.getElementById("acctType"),m=document.getElementById("acctName"),v=document.getElementById("bankFields"),h=document.getElementById("bankName"),p=document.getElementById("iban"),f=document.getElementById("withdrawAmount"),g=document.getElementById("currency"),w=document.getElementById("addAccountBtn"),_=document.getElementById("requestWithdrawBtn");function b(){u&&v&&(v.style.display="bank"===u.value?"":"none")}function E(){var e=u?u.value:"bank",t=m&&m.value||"";if(!(t=t.trim()))return void alert("Please enter account name/identifier");var n={type:e,name:t};if("bank"===e){if(n.bank=h&&h.value||"",n.iban=p&&p.value||"",!(n.bank=n.bank.trim())||!(n.iban=n.iban.trim()))return void alert("Please enter bank and account/IBAN")}i.push(n);try{var o={type:"wallet",action:"add_account",data:n};window.__tgSend?window.__tgSend(JSON.stringify(o)):window.TelegramGameProxy&&"function"==typeof window.TelegramGameProxy.receiveEvent&&window.TelegramGameProxy.receiveEvent(JSON.stringify(o))}catch(e){}alert("Account added.")}function L(){var e=parseFloat(f&&f.value||"0");if(!(e>0))return void alert("Enter a valid withdrawal amount");var t={amount:e,currency:g&&g.value||"USD"};try{var n={type:"wallet",action:"request_withdraw",data:t};window.__tgSend?window.__tgSend(JSON.stringify(n)):window.TelegramGameProxy&&"function"==typeof window.TelegramGameProxy.receiveEvent&&window.TelegramGameProxy.receiveEvent(JSON.stringify(n))}catch(e){}alert("Withdrawal request submitted.")}u&&u.addEventListener("change",b),b(),w&&w.addEventListener("click",function(e){e.preventDefault(),E()}),_&&_.addEventListener("click",function(e){e.preventDefault(),L()});function k(o){e&&t&&(n.textContent="wallet"===o?"Wallet":"Betting History",d.style.display="history"===o?"":"none",l.style.display="wallet"===o?"":"none",e.classList.add("open"),e.setAttribute("aria-hidden","false"),x(),"history"===o&&y())}function C(){e&&(e.classList.remove("open"),e.setAttribute("aria-hidden","true"))}o&&o.addEventListener("click",C),a&&a.addEventListener("click",C);function x(){var e=document.getElementById("game");if(!e)return;var n=e.querySelector("canvas");if(!n)return;var o=e.getBoundingClientRect(),a=n.getBoundingClientRect(),d=Math.floor(.8*a.width),l=Math.floor(.6*a.height),r=a.left-o.left+Math.floor((a.width-d)/2),i=a.top-o.top+Math.floor((a.height-l)/2);t.style.left=r+"px",t.style.top=i+"px",t.style.width=d+"px",t.style.height=l+"px"}window.addEventListener("resize",x,{passive:!0}),window.addEventListener("orientationchange",x,{passive:!0});function O(){var e=document.getElementById("historyBtn"),t=document.getElementById("walletBtn");e&&e.addEventListener("click",function(e){k("history")}),t&&t.addEventListener("click",function(e){k("wallet")})}"loading"===document.readyState?document.addEventListener("DOMContentLoaded",O,{once:!0}):O(),window.HorizonUI=window.HorizonUI||{},window.HorizonUI.openOverlay=k,window.HorizonUI.closeOverlay=C})();
+<script id="overlayPanelsScript">(function(){var e=document.getElementById("overlay"),t=document.getElementById("overlayCard"),n=document.getElementById("overlayTitle"),o=document.getElementById("overlayClose"),a=document.getElementById("overlayBackdrop"),d=document.getElementById("historyContent"),l=document.getElementById("walletContent"),r=document.querySelector("#historyTable tbody"),i=[],c=[];function s(e){var t=e?new Date(e):new Date;return t.toLocaleString()}function y(){if(!r)return;var e="";if(0===c.length)e='<tr><td colspan="4" style="opacity:.8">No bets made yet.</td></tr>';else for(var t=c.length-1;t>=0;t--){var n=c[t];e+="<tr><td>"+(n.time||s())+"</td><td>"+(n.bet||0)+"</td><td>"+(n.win?'<span class=\"hist-badge win\">WIN</span>':'<span class=\"hist-badge loss\">LOSS</span>')+"</td><td>"+(null!=n.payout?n.payout:"-")+"</td></tr>"}r.innerHTML=e}window.HorizonUI=window.HorizonUI||{},window.HorizonUI.addBetHistory=function(e,t,n,o){c.push({bet:e,win:!!t,payout:n,time:o||s()}),document.getElementById("overlay")&&document.getElementById("overlay").classList.contains("open")&&d&&"none"!==d.style.display&&y()};var u=document.getElementById("acctType"),m=document.getElementById("acctName"),v=document.getElementById("bankFields"),h=document.getElementById("bankName"),p=document.getElementById("iban"),f=document.getElementById("withdrawAmount"),g=document.getElementById("currency"),w=document.getElementById("addAccountBtn"),_=document.getElementById("requestWithdrawBtn");function b(){u&&v&&(v.style.display="bank"===u.value?"":"none")}function E(){var e=u?u.value:"bank",t=m&&m.value||"";if(!(t=t.trim()))return void /* no-alert */ console.log("Please enter account name/identifier");var n={type:e,name:t};if("bank"===e){if(n.bank=h&&h.value||"",n.iban=p&&p.value||"",!(n.bank=n.bank.trim())||!(n.iban=n.iban.trim()))return void /* no-alert */ console.log("Please enter bank and account/IBAN")}i.push(n);try{var o={type:"wallet",action:"add_account",data:n};window.__tgSend?window.__tgSend(JSON.stringify(o)):window.TelegramGameProxy&&"function"==typeof window.TelegramGameProxy.receiveEvent&&window.TelegramGameProxy.receiveEvent(JSON.stringify(o))}catch(e){}/* no-alert */ console.log("Account added.")}function L(){var e=parseFloat(f&&f.value||"0");if(!(e>0))return void /* no-alert */ console.log("Enter a valid withdrawal amount");var t={amount:e,currency:g&&g.value||"USD"};try{var n={type:"wallet",action:"request_withdraw",data:t};window.__tgSend?window.__tgSend(JSON.stringify(n)):window.TelegramGameProxy&&"function"==typeof window.TelegramGameProxy.receiveEvent&&window.TelegramGameProxy.receiveEvent(JSON.stringify(n))}catch(e){}/* no-alert */ console.log("Withdrawal request submitted.")}u&&u.addEventListener("change",b),b(),w&&w.addEventListener("click",function(e){e.preventDefault(),E()}),_&&_.addEventListener("click",function(e){e.preventDefault(),L()});function k(o){e&&t&&(n.textContent="wallet"===o?"Wallet":"Betting History",d.style.display="history"===o?"":"none",l.style.display="wallet"===o?"":"none",e.classList.add("open"),e.setAttribute("aria-hidden","false"),x(),"history"===o&&y())}function C(){e&&(e.classList.remove("open"),e.setAttribute("aria-hidden","true"))}o&&o.addEventListener("click",C),a&&a.addEventListener("click",C);function x(){var e=document.getElementById("game");if(!e)return;var n=e.querySelector("canvas");if(!n)return;var o=e.getBoundingClientRect(),a=n.getBoundingClientRect(),d=Math.floor(.8*a.width),l=Math.floor(.6*a.height),r=a.left-o.left+Math.floor((a.width-d)/2),i=a.top-o.top+Math.floor((a.height-l)/2);t.style.left=r+"px",t.style.top=i+"px",t.style.width=d+"px",t.style.height=l+"px"}window.addEventListener("resize",x,{passive:!0}),window.addEventListener("orientationchange",x,{passive:!0});function O(){var e=document.getElementById("historyBtn"),t=document.getElementById("walletBtn");e&&e.addEventListener("click",function(e){k("history")}),t&&t.addEventListener("click",function(e){k("wallet")})}"loading"===document.readyState?document.addEventListener("DOMContentLoaded",O,{once:!0}):O(),window.HorizonUI=window.HorizonUI||{},window.HorizonUI.openOverlay=k,window.HorizonUI.closeOverlay=C})();
 
 function initWalletTabs(){
   var tabAdd = document.getElementById('tabAdd');
@@ -2740,6 +3074,419 @@ function initWalletTabs(){
 </script>
 
 
+
+<script id="miniapp-validators">
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function setError(input, message, defaultPh){
+    if(!input) return;
+    input.classList.add('input-error');
+    if(typeof message === 'string' && message.length){
+      if(!input.hasAttribute('data-default-ph')){
+        input.setAttribute('data-default-ph', defaultPh || input.getAttribute('placeholder') || '');
+      }
+      input.value = '';
+      input.setAttribute('placeholder', message);
+    }
+  }
+  function setOk(input){
+    if(!input) return;
+    input.classList.remove('input-error');
+    var def = input.getAttribute('data-default-ph');
+    if(def !== null){
+      input.setAttribute('placeholder', def);
+      input.removeAttribute('data-default-ph');
+    }
+  }
+  function validEmail(v){
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim());
+  }
+  function savePayPal(){
+    var input = $('paypalEmail');
+    if(!input) return;
+    var email = String(input.value || '').trim();
+    if(!email || !validEmail(email)){
+      setError(input, 'Enter a valid PayPal email', 'name@example.com');
+      input.focus();
+      return;
+    }
+    setOk(input);
+    try{ localStorage.setItem('wallet_paypal_email', email); }catch(e){}
+  }
+  function addWithdrawal(){
+    var input = $('withdrawAmount');
+    var v = (input && input.value !== undefined) ? Number(input.value) : 0;
+    if(!v || isNaN(v) || v <= 0){
+      setError(input, 'Enter amount > 0', 'Amount');
+      input && input.focus();
+      return;
+    }
+    setOk(input);
+    var rec = { amount: v, date: new Date().toISOString(), status: 'Pending' };
+    var arr = [];
+    try{
+      arr = JSON.parse(localStorage.getItem('wallet_withdrawals')||'[]');
+      if(!Array.isArray(arr)) arr = [];
+    }catch(e){ arr = []; }
+    arr.unshift(rec);
+    try{ localStorage.setItem('wallet_withdrawals', JSON.stringify(arr)); }catch(e){}
+    input.value = '';
+    renderWithdrawals();
+  }
+  function renderWithdrawals(){
+    var tbody = document.querySelector('#withdrawalsTable tbody');
+    if(!tbody) return;
+    var arr = [];
+    try{
+      arr = JSON.parse(localStorage.getItem('wallet_withdrawals')||'[]');
+      if(!Array.isArray(arr)) arr = [];
+    }catch(e){ arr = []; }
+    if(arr.length === 0){
+      tbody.innerHTML = '<tr><td colspan="3" style="opacity:.8">No withdrawals yet.</td></tr>';
+      return;
+    }
+    var rows = arr.map(function(it){
+      var d = new Date(it.date);
+      var ds = isNaN(d.getTime()) ? String(it.date) : d.toLocaleString();
+      var st = it.status || 'Pending';
+      return '<tr>'
+           + '<td>' + (it.amount ?? '') + '</td>'
+           + '<td>' + ds + '</td>'
+           + '<td><span class="hist-badge ' + (st==='Completed'?'win':(st==='Rejected'?'loss':'')) + '">' + st + '</span></td>'
+           + '</tr>';
+    }).join('');
+    tbody.innerHTML = rows;
+  }
+  function hydratePayPal(){
+    var input = $('paypalEmail');
+    if(!input) return;
+    try{
+      var saved = localStorage.getItem('wallet_paypal_email');
+      if(saved) input.value = saved;
+    }catch(e){}
+  }
+  function ready(fn){
+    if(document.readyState !== 'loading') fn();
+    else document.addEventListener('DOMContentLoaded', fn);
+  }
+  ready(function(){
+    var addBtn = $('addAccountBtn');
+    var reqBtn = $('requestWithdrawBtn');
+    addBtn && addBtn.addEventListener('click', savePayPal);
+    reqBtn && reqBtn.addEventListener('click', addWithdrawal);
+    var pe = $('paypalEmail'); if(pe){ pe.addEventListener('input', function(){ setOk(pe); }); }
+    var wa = $('withdrawAmount'); if(wa){ wa.addEventListener('input', function(){ setOk(wa); }); }
+    hydratePayPal();
+    renderWithdrawals();
+  });
+})();
+</script>
+
+
+<script id="press-effect-script">
+(function(){
+  function wirePressEffect(el){
+    if(!el) return;
+    if(el.__pressWired) return; el.__pressWired = true;
+    function pressOn(){ el.classList.add('is-pressed'); }
+    function pressOff(){ el.classList.remove('is-pressed'); }
+    el.addEventListener('pointerdown', function(){ pressOn(); });
+    ['pointerup','pointercancel','pointerleave'].forEach(function(t){
+      el.addEventListener(t, function(){ pressOff(); });
+    });
+    el.addEventListener('keydown', function(e){
+      if(e.code === 'Space' || e.code === 'Enter'){ pressOn(); }
+    });
+    el.addEventListener('keyup', function(e){
+      if(e.code === 'Space' || e.code === 'Enter'){ pressOff(); }
+    });
+    el.addEventListener('blur', pressOff);
+  }
+  function ready(fn){ if(document.readyState !== 'loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
+  ready(function(){
+    wirePressEffect(document.getElementById('walletBtn'));
+    wirePressEffect(document.getElementById('historyBtn'));
+  });
+})();
+</script>
+
+
+<!-- SCALED SPIN PANEL CONTROLS (canvas-only, portrait 720x1280 base proportions) -->
+<script>
+(function(){
+  // proportions tuned for portrait layout; tweak if needed
+  var FRACTIONS = {
+    betX: 0.19,   // left edge of capsule
+    betY: 0.80,   // vertical position near bottom
+    betW: 0.60,   // width of capsule
+    betH: 0.09    // height of capsule
+  };
+
+  function clamp(v){ v = Math.floor(Number(v)||0); if(v<1)v=1; if(v>5)v=5; return v; }
+
+  function patchEngine(){
+    if(!window.SlotEngine || !window.$slot) return false;
+    var P = SlotEngine.prototype;
+    if(!P.__scaledPatched){
+      var orig = P.setBet;
+      P.setBet = function(v){
+        v = clamp(v);
+        this.bet = v;
+        this.betDraft = String(v);
+        try{ if(typeof this._draw==='function') this._draw(); }catch(_){}
+        return v;
+      };
+      if(!P.getBet) P.getBet = function(){ return this.bet; };
+      if(!P.incBet) P.incBet = function(d){ this.setBet((this.bet|0) + (d|0)); };
+      // Minimal editor
+      if(!P._showEditor){
+        P._showEditor = function(){
+          var input = document.getElementById('betInput'); if(!input || !this.canvas || !this.betRect) return;
+          var c = this.canvas.getBoundingClientRect(), r = this.betRect;
+          input.type='number'; input.min='1'; input.max='5'; input.inputMode='numeric';
+          input.value = String(this.bet||1);
+          input.style.position='fixed';
+          input.style.left  = (c.left + (r.x/this.W)*c.width) + 'px';
+          input.style.top   = (c.top  + (r.y/this.H)*c.height) + 'px';
+          input.style.width = Math.max(60, ((r.w/this.W)*c.width)) + 'px';
+          input.style.height= Math.max(34, ((r.h/this.H)*c.height)) + 'px';
+          input.style.zIndex='9999'; input.style.display='block';
+          input.style.background='rgba(0,0,0,0.6)'; input.style.color='#fff';
+          input.style.border='1px solid rgba(255,255,255,0.45)'; input.style.borderRadius='10px';
+          input.style.textAlign='center'; input.style.font='600 18px system-ui';
+          var self=this;
+          function commit(){ var v=parseInt(input.value,10); if(!isFinite(v)) v=1; self.setBet(clamp(v)); self._hideEditor(); }
+          input.onchange=commit; input.onblur=commit;
+          setTimeout(function(){ try{ input.focus(); input.select(); }catch(_){ } }, 0);
+        };
+      }
+      if(!P._hideEditor){
+        P._hideEditor = function(){ var input=document.getElementById('betInput'); if(input){ input.style.display='none'; input.onchange=null; input.onblur=null; } };
+      }
+      P.__scaledPatched = true;
+    }
+    // initialize default to 1
+    try{ if(!(window.$slot.bet>=1 && window.$slot.bet<=5)) window.$slot.setBet((window.$slot.bet|0)||1); }catch(_){}
+    return true;
+  }
+
+  function applyScaledRects(){
+    var s = window.$slot; if(!s) return false;
+    var W = s.W, H = s.H;
+    var betRect = {
+      x: W * FRACTIONS.betX,
+      y: H * FRACTIONS.betY,
+      w: W * FRACTIONS.betW,
+      h: H * FRACTIONS.betH
+    };
+    s.betRect = betRect;
+    // derive +/- as thirds of capsule, so they scale perfectly with it
+    var thirdW = betRect.w / 3;
+    s.betMinusRect = { x: betRect.x,             y: betRect.y, w: thirdW,           h: betRect.h };
+    s.betPlusRect  = { x: betRect.x + 2*thirdW,  y: betRect.y, w: thirdW,           h: betRect.h };
+    return true;
+  }
+
+  function armCanvas(){
+    var s = window.$slot; if(!s || !s.canvas) return false;
+    var c = s.canvas;
+    if(c.__scaledArmed) return true;
+    c.__scaledArmed = true;
+
+    function toGame(ev){
+      var r=c.getBoundingClientRect();
+      return { x:(ev.clientX-r.left)/r.width*s.W, y:(ev.clientY-r.top)/r.height*s.H };
+    }
+    function hit(p, r){ return r && p.x>=r.x && p.x<=r.x+r.w && p.y>=r.y && p.y<=r.y+r.h; }
+
+    // pointerdown: immediate +/-; middle = editor on up
+    c.addEventListener('pointerdown', function(ev){
+      try{
+        applyScaledRects();
+        var p=toGame(ev);
+        if (hit(p, s.betMinusRect)){ s.minusPressed=true; s.incBet(-1); s._draw(); ev.preventDefault(); ev.stopPropagation(); return; }
+        if (hit(p, s.betPlusRect)){  s.plusPressed=true;  s.incBet(+1); s._draw(); ev.preventDefault(); ev.stopPropagation(); return; }
+      }catch(_){}
+    }, true);
+
+    c.addEventListener('pointerup', function(ev){
+      try{
+        applyScaledRects();
+        var p=toGame(ev);
+        s.plusPressed=false; s.minusPressed=false;
+        if (hit(p, s.betRect)){ if (typeof s._showEditor==='function') s._showEditor(); ev.preventDefault(); ev.stopPropagation(); return; }
+        s._draw();
+      }catch(_){}
+    }, true);
+
+    ['pointerleave','pointercancel'].forEach(function(t){
+      c.addEventListener(t, function(){ try{ s.plusPressed=false; s.minusPressed=false; s._draw(); }catch(_){ } }, true);
+    });
+
+    return true;
+  }
+
+  // keep proportions in sync on each draw
+  (function hookDraw(){
+    var s = window.$slot; if(!s) return setTimeout(hookDraw, 200);
+    var orig = s._draw;
+    s._draw = function(){
+      applyScaledRects();
+      return orig.apply(this, arguments);
+    };
+  })();
+
+  var tries=0, id=setInterval(function(){
+    var ok1 = patchEngine();
+    var ok2 = armCanvas();
+    if ((ok1 && ok2) || ++tries > 200) clearInterval(id);
+  }, 100);
+})();
+</script>
+
+
+<!-- TELEGRAM MINI APP PATCH: clamp 1..5, styled editor, outside-click hide -->
+<script>
+(function(){
+  // Clamp helper
+  function clamp(v){ v = Math.floor(Number(v)||0); if(v<1)v=1; if(v>5)v=5; return v; }
+
+  function patchEngine(){
+    if(!window.SlotEngine) return false;
+    var P = SlotEngine.prototype;
+    if(P.__tgPatched) return true;
+
+    // Clamp everywhere
+    P.setBet = function(v){
+      v = clamp(v);
+      this.bet = v;
+      this.betDraft = String(v);
+      try{ if (typeof this._draw === 'function') this._draw(); }catch(_){}
+      return v;
+    };
+    P.incBet = function(d){
+      this.setBet((this.bet|0) + (d|0));
+    };
+
+    // Styled editor that works inside Telegram WebView
+    P._showEditor = function(){
+      var input = document.getElementById('betInput');
+      if(!input || !this.canvas || !this.betRect) return;
+      var c = this.canvas.getBoundingClientRect(), r = this.betRect;
+
+      // Input attributes for numeric keypad
+      input.type = 'number';
+      input.min = '1';
+      input.max = '5';
+      input.inputMode = 'numeric';
+      input.pattern = '[0-9]*';
+
+      // Value from state
+      input.value = String((this.bet>=1 && this.bet<=5) ? this.bet : 1);
+
+      // Telegram-safe styling (visible & focusable)
+      input.style.position = 'fixed';
+      input.style.left  = (c.left + (r.x/this.W)*c.width) + 'px';
+      input.style.top   = (c.top  + (r.y/this.H)*c.height) + 'px';
+      input.style.width = Math.max(60, ((r.w/this.W)*c.width)) + 'px';
+      input.style.height= Math.max(36, ((r.h/this.H)*c.height)) + 'px';
+      input.style.zIndex = '9999';
+      input.style.display = 'block';
+      input.style.opacity = '1';
+      input.style.visibility = 'visible';
+      input.style.pointerEvents = 'auto';
+
+      // Visual style to match panel
+      input.style.background = 'rgba(0,0,0,0.6)';
+      input.style.color = '#fff';
+      input.style.border = '1px solid rgba(255,255,255,0.45)';
+      input.style.borderRadius = '10px';
+      input.style.textAlign = 'center';
+      input.style.font = '600 18px system-ui';
+      input.style.padding = '4px 8px';
+
+      var self = this;
+      function commit(){
+        var v = parseInt(input.value, 10);
+        if(!isFinite(v)) v = 1;
+        self.setBet(clamp(v));
+        self._hideEditor();
+      }
+      input.onchange = commit;
+      input.onblur = commit;
+      input.onkeydown = function(e){ if(e.key === 'Enter'){ e.preventDefault(); commit(); } };
+
+      // Prevent scroll on wheel changing value beyond range
+      input.oninput = function(){
+        var v = parseInt(input.value, 10);
+        if (isFinite(v)) {
+          if (v < 1) input.value = '1';
+          if (v > 5) input.value = '5';
+        }
+      };
+
+      // Focus last (Telegram sometimes needs a tick)
+      setTimeout(function(){ try{ input.focus(); input.select(); }catch(_){ } }, 0);
+    };
+
+    P._hideEditor = function(){
+      var input = document.getElementById('betInput');
+      if(!input) return;
+      input.style.display = 'none';
+      input.style.opacity = '0';
+      input.style.visibility = 'hidden';
+      input.style.pointerEvents = 'none';
+      input.onchange = input.onblur = input.onkeydown = input.oninput = null;
+    };
+
+    P.__tgPatched = true;
+    return true;
+  }
+
+  // Close editor when clicking/tapping outside the bet zone
+  function armOutsideClose(){
+    if(window.__tgOutsideCloseArmed) return true;
+    window.__tgOutsideCloseArmed = true;
+
+    window.addEventListener('pointerdown', function(e){
+      try{
+        var s = window.$slot;
+        if(!s || !s.canvas || !s.betRect) return;
+        var input = document.getElementById('betInput');
+        if(!input || input.style.display === 'none') return;
+        if(e.target === input) return; // allow interaction
+        // Map event to game coords
+        var r = s.canvas.getBoundingClientRect();
+        var p = { x:(e.clientX - r.left)/r.width * s.W, y:(e.clientY - r.top)/r.height * s.H };
+        var br = s.betRect;
+        var inside = (p.x>=br.x && p.x<=br.x+br.w && p.y>=br.y && p.y<=br.y+br.h);
+        if(!inside){
+          s._hideEditor();
+        }
+      }catch(_){}
+    }, true); // capture to run before game handlers
+    return true;
+  }
+
+  // Initialize default bet to 1 if needed
+  function ensureDefault(){
+    try{
+      if(window.$slot && !(window.$slot.bet>=1 && window.$slot.bet<=5)){
+        window.$slot.setBet(1);
+      }
+    }catch(_){}
+  }
+
+  // Boot loop
+  var tries = 0, id = setInterval(function(){
+    var ok1 = patchEngine();
+    var ok2 = armOutsideClose();
+    ensureDefault();
+    if((ok1 && ok2) || ++tries > 200) clearInterval(id);
+  }, 100);
+})();
+</script>
+
 </body>
 </html>
 
@@ -2761,5 +3508,278 @@ function initWalletTabs(){
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
   else ready();
+})();
+</script>
+<script id="server-integration">
+(function () {
+  // --- 0) Telegram init + API helper ---
+  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+  if (tg && tg.initDataUnsafe) { try{ tg.expand && tg.expand(); }catch(_){} }
+
+  const INIT_DATA = (tg && tg.initData) ? tg.initData : "";
+  const API_BASE = (function () {
+    // If you're serving the game on game.example.com, the API is on api.example.com
+    // Otherwise default to same-origin /api
+    const h = location.hostname;
+    const parts = h.split('.');
+    if (parts.length >= 3 && parts[0] === 'game') {
+      return location.protocol + '//api.' + parts.slice(1).join('.');
+    }
+    return ''; // same origin
+  })();
+
+  async function api(path, body, method='POST') {
+    const url = API_BASE + '/api' + path;
+    const opts = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        // Back end will verify Telegram init data or your session cookie
+        'X-Telegram-Init': INIT_DATA
+      },
+      credentials: 'include'
+    };
+    if (body && method !== 'GET') opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      let msg = 'Request failed';
+      try { const j = await res.json(); msg = j.message || j.error || msg; } catch(_){}
+      throw new Error(msg + ' (' + res.status + ')');
+    }
+    return res.json();
+  }
+
+  // --- 1) Wait for engine ---
+  function whenSlotReady() {
+    return new Promise((resolve) => {
+      if (window.$slot) return resolve(window.$slot);
+      const iv = setInterval(() => { if (window.$slot) { clearInterval(iv); resolve(window.$slot); }}, 20);
+    });
+  }
+
+  // --- 2) Helpers to drive reels with a server grid ---
+  function applyServerGridToReels(slot, grid) {
+    // Expecting grid shaped as [reel][row] (columns), length == CONFIG.reelCount, each with CONFIG.rows symbols.
+    // If your API returns [rows][cols] instead, transpose here.
+    const CONFIG = window.CONFIG || { rows: 3, reelCount: 3, spinBaseDuration: 1400, spinStagger: 180, cyclesBase: 7, cyclesStep: 1, symbolSize: 96 };
+    for (let i = 0; i < slot.reels.length; i++) {
+      const r = slot.reels[i];
+      // defensive copy & normalize to strings existing in SYMBOLS array
+      let arr = grid[i] ? grid[i].slice(0, CONFIG.rows) : [];
+      // If API sends numbers/ids, map to string keys that exist in SYMBOLS
+      const SYMBOLS = window.SYMBOLS || [];
+      arr = arr.map(v => {
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' && SYMBOLS[v]) return SYMBOLS[v];
+        const s = String(v);
+        return SYMBOLS.includes(s) ? s : SYMBOLS[(Math.random()*SYMBOLS.length)|0]; // fallback
+      });
+      r.finalSymbols = arr;
+      r.spinning = true; r.time = 0;
+      r.duration = CONFIG.spinBaseDuration + i * CONFIG.spinStagger;
+      const cycles = CONFIG.cyclesBase + i * CONFIG.cyclesStep;
+      r.totalDistPx = cycles * CONFIG.rows * CONFIG.symbolSize;
+      r.progressPx = 0;
+    }
+    try { window.AudioSys && window.AudioSys.resetTicker && window.AudioSys.resetTicker(); } catch (_){}
+  }
+
+  // --- 3) Wire everything once $slot exists ---
+  whenSlotReady().then(function(slot){
+    // 3.a) Load state (balance / max bet / last jackpot, etc.)
+    (async function bootstrapState(){
+      try {
+        const state = await api('/state', null, 'GET'); // expects {balance,maxBet,bet?,username?,...}
+        if (typeof state.maxBet === 'number' && slot.bet > state.maxBet) slot.setBet(state.maxBet);
+        // If backend also returns a minBet (optional), clamp here:
+        if (typeof state.minBet === 'number' && slot.bet < state.minBet) slot.setBet(state.minBet);
+
+        if (typeof state.balance === 'number') {
+          slot.balance = state.balance;
+          slot._draw && slot._draw();
+        }
+      } catch (e) {
+        console.warn('State init failed:', e.message);
+      }
+    })();
+
+    
+    // Helper: show transient balance hint (styled like the sound hint)
+    function showBalanceHint(msg, ms){
+      try{
+        var bh = document.getElementById('balanceHint');
+        if(!bh) return;
+        if(msg) bh.innerHTML = msg;
+        bh.style.display = 'block';
+        if (bh._hideT) clearTimeout(bh._hideT);
+        bh._hideT = setTimeout(function(){ bh.style.display = 'none'; }, ms || 1400);
+      }catch(_){}
+    }
+
+    // 3.b) Override spin to call server
+    const originalSpin = slot._spin.bind(slot);
+    slot._spin = async function(){
+      // mirror original guards:
+      if (this.winState !== 'idle') return;
+      if (this.reels.some(r => r.spinning)) return;
+
+      
+      // Balance guard: stop spin when funds are insufficient
+      var bal = Number(this.balance || 0);
+      var bet = Number(this.bet || 1);
+      if (bal <= 0 || bal < bet) {
+        showBalanceHint('Insufficient balance — <b>top up to play</b> 💸', 1400);
+        return;
+      }
+// Play the same spin sfx as original (best-effort)
+      try { window.AudioSys && AudioSys.playSpin && AudioSys.playSpin(); } catch(_){ 
+        try{ const sfx = document.getElementById('spinSound'); sfx && sfx.play && sfx.play(); }catch(__){} 
+      }
+
+      // Call server RNG
+      let res;
+      try {
+        res = await api('/spin', { bet: this.bet }, 'POST');
+        // expected: { grid:[reel][row], balance:number, payout:number, win_type:'none'|'2z'|'3z'|'3j', spin_id:string }
+      } catch (e) {
+        console.error('Spin failed:', e.message);
+        // gracefully fallback to client spin so UI doesn’t freeze
+        return originalSpin();
+      }
+
+      // Drive reels with server grid
+      if (res && Array.isArray(res.grid)) {
+        applyServerGridToReels(this, res.grid);
+      } else {
+        // if bad shape, fallback to original client RNG
+        return originalSpin();
+      }
+
+      // Update balance immediately so HUD shows new value during spin
+      if (typeof res.balance === 'number') {
+        this.balance = res.balance;
+      }
+      // Optionally, you can decorate win banner based on res.win_type/payout later when reels stop.
+    };
+
+    // 3.c) Hook selectTab to open Wallet (withdraw) and History
+    const originalSelectTab = slot.selectTab.bind(slot);
+    slot.selectTab = function(key){
+      originalSelectTab(key);
+      if (String(key).toLowerCase() === 'wallet') openWithdraw();
+      if (String(key).toLowerCase() === 'history') openHistory();
+    };
+
+    // 3.d) Simple overlays (minimal DOM) for withdraw + spins history
+    function ensureOverlay() {
+      let ov = document.getElementById('serverOverlay');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'serverOverlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999';
+        ov.innerHTML = '<div id="serverPanel" style="max-width:92vw;width:560px;background:#10131a;color:#fff;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.4);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;"></div>';
+        ov.addEventListener('click', (e)=>{ if(e.target===ov) closeOverlay(); });
+        document.body.appendChild(ov);
+      }
+      return ov.querySelector('#serverPanel');
+    }
+    function show(html){ const p = ensureOverlay(); p.innerHTML = html; }
+    function closeOverlay(){ const ov = document.getElementById('serverOverlay'); ov && ov.remove(); }
+
+    async function openWithdraw(){
+      show(`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <h3 style="margin:0;font-size:18px">Withdraw</h3>
+          <button onclick="document.getElementById('serverOverlay').remove()" style="background:#222;border:0;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer">Close</button>
+        </div>
+        <p style="opacity:.9;margin:.25rem 0 1rem">Request a withdrawal. Limits are enforced by the server.</p>
+        <div style="display:flex;gap:8px">
+          <input id="wdAmount" type="number" min="1" step="1" placeholder="Amount" style="flex:1;background:#0c0f15;border:1px solid #273043;border-radius:8px;color:#fff;padding:10px">
+          <button id="wdBtn" style="background:#2c6dfa;border:0;color:#fff;padding:10px 14px;border-radius:8px;cursor:pointer">Request</button>
+        </div>
+        <div id="wdMsg" style="margin-top:10px;font-size:13px;opacity:.95"></div>
+      `);
+      document.getElementById('wdBtn').onclick = async () => {
+        const v = +(document.getElementById('wdAmount').value||'0');
+        const msg = document.getElementById('wdMsg');
+        if (!v || v<=0) { msg.textContent = 'Enter a valid amount.'; return; }
+        msg.textContent = 'Submitting...';
+        try {
+          const res = await api('/withdraw', { amount: v }, 'POST'); // {status:'ok', balance}
+          msg.textContent = 'Withdrawal requested. Status: ' + (res.status || 'ok');
+          if (typeof res.balance === 'number') { slot.balance = res.balance; slot._draw && slot._draw(); }
+        } catch (e) {
+          msg.textContent = 'Failed: ' + e.message;
+        }
+      };
+    }
+
+    async function openHistory(){
+      show(`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <h3 style="margin:0;font-size:18px">Recent Spins</h3>
+          <button onclick="document.getElementById('serverOverlay').remove()" style="background:#222;border:0;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer">Close</button>
+        </div>
+        <div id="histWrap" style="max-height:min(70vh,560px);overflow:auto;border:1px solid #273043;border-radius:10px;background:#0c0f15"></div>
+      `);
+      const wrap = document.getElementById('histWrap');
+      wrap.innerHTML = '<div style="padding:12px;opacity:.8">Loading…</div>';
+      try {
+        // expects [{id, at, bet, payout, win_type}] newest first
+        const rows = await api('/spins?limit=50', null, 'GET');
+        if (!Array.isArray(rows) || !rows.length) {
+          wrap.innerHTML = '<div style="padding:12px;opacity:.8">No spins yet.</div>';
+          return;
+        }
+        const fmt = (n)=> (typeof n==='number' ? n.toLocaleString() : n);
+        wrap.innerHTML = rows.map(r => `
+          <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid #182131">
+            <div style="opacity:.9">${new Date(r.at||r.created_at||Date.now()).toLocaleString()}</div>
+            <div>Bet: <strong>${fmt(r.bet)}</strong></div>
+            <div>Payout: <strong>${fmt(r.payout||0)}</strong></div>
+            <div style="opacity:.85">${(r.win_type||'none').toUpperCase()}</div>
+          </div>
+        `).join('');
+      } catch (e) {
+        wrap.innerHTML = '<div style="padding:12px;color:#ff8080">Failed: '+e.message+'</div>';
+      }
+    }
+
+    // Expose (optional) for debugging from console
+    window.__api = { state: ()=>api('/state',null,'GET'), spin:(bet)=>api('/spin',{bet},'POST'), withdraw:(amount)=>api('/withdraw',{amount},'POST'), spins:()=>api('/spins?limit=50',null,'GET') };
+  });
+})();
+</script>
+
+<!-- ALWAYS-VISIBLE HITBOX OUTLINES (2px) -->
+<script>
+(function(){
+  function drawOutlines(){
+    var s=window.$slot; if(!s||!s.ctx) return;
+    var ctx=s.ctx;
+    if(!s.betRect||!s.betMinusRect||!s.betPlusRect) return;
+    ctx.save();
+    ctx.lineWidth=2;
+    // yellow bet capsule
+    ctx.strokeStyle='rgba(255,255,0,0.8)';
+    ctx.strokeRect(s.betRect.x, s.betRect.y, s.betRect.w, s.betRect.h);
+    // red minus
+    ctx.strokeStyle='rgba(255,0,0,0.8)';
+    ctx.strokeRect(s.betMinusRect.x, s.betMinusRect.y, s.betMinusRect.w, s.betMinusRect.h);
+    // green plus
+    ctx.strokeStyle='rgba(0,255,0,0.8)';
+    ctx.strokeRect(s.betPlusRect.x, s.betPlusRect.y, s.betPlusRect.w, s.betPlusRect.h);
+    ctx.restore();
+  }
+
+  (function hookDraw(){
+    var s=window.$slot; if(!s) return setTimeout(hookDraw,200);
+    var orig=s._draw;
+    s._draw=function(){
+      var r=orig.apply(this,arguments);
+      try{ drawOutlines(); }catch(_){}
+      return r;
+    };
+  })();
 })();
 </script>
